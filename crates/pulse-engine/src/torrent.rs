@@ -1,6 +1,8 @@
+use std::future::Future;
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 use librqbit::dht::DhtPersistenceConfig;
 use librqbit::limits::LimitsConfig;
@@ -10,6 +12,7 @@ use librqbit::{
 use reqwest::Client;
 use reqwest::header::HeaderMap;
 use serde::{Deserialize, Serialize};
+use tokio::runtime::Handle;
 
 use crate::error::{EngineError, Result};
 use crate::lang::text;
@@ -118,6 +121,94 @@ pub async fn session(download_dir: &Path, state_dir: &Path, download_limit: u64)
     Session::new_with_opts(download_dir.to_path_buf(), opts).await.map_err(failed)
 }
 
+pub const IDLE_SHUTDOWN: Duration = Duration::from_secs(60);
+
+#[derive(Default)]
+struct HubState {
+    session: Option<Arc<Session>>,
+    users: usize,
+    generation: u64,
+}
+
+pub struct TorrentHub {
+    state: tokio::sync::Mutex<HubState>,
+    idle: Duration,
+    rt: Handle,
+}
+
+pub struct SessionLease {
+    session: Arc<Session>,
+    hub: Arc<TorrentHub>,
+}
+
+impl std::ops::Deref for SessionLease {
+    type Target = Arc<Session>;
+
+    fn deref(&self) -> &Arc<Session> {
+        &self.session
+    }
+}
+
+impl Drop for SessionLease {
+    fn drop(&mut self) {
+        self.hub.release();
+    }
+}
+
+impl TorrentHub {
+    pub fn new(rt: Handle, idle: Duration) -> Arc<Self> {
+        Arc::new(Self { state: tokio::sync::Mutex::new(HubState::default()), idle, rt })
+    }
+
+    pub async fn acquire(self: &Arc<Self>, start: impl Future<Output = Result<Arc<Session>>>) -> Result<SessionLease> {
+        let mut st = self.state.lock().await;
+        let session = match &st.session {
+            Some(session) => session.clone(),
+            None => {
+                let session = start.await?;
+                st.session = Some(session.clone());
+                session
+            }
+        };
+        st.users += 1;
+        st.generation += 1;
+        Ok(SessionLease { session, hub: self.clone() })
+    }
+
+    fn release(self: &Arc<Self>) {
+        let hub = self.clone();
+        self.rt.spawn(async move {
+            let generation = {
+                let mut st = hub.state.lock().await;
+                st.users = st.users.saturating_sub(1);
+                if st.users > 0 {
+                    return;
+                }
+                st.generation
+            };
+            tokio::time::sleep(hub.idle).await;
+            let idle = {
+                let mut st = hub.state.lock().await;
+                if st.users > 0 || st.generation != generation { None } else { st.session.take() }
+            };
+            if let Some(session) = idle {
+                session.stop().await;
+            }
+        });
+    }
+
+    pub async fn is_running(&self) -> bool {
+        self.state.lock().await.session.is_some()
+    }
+
+    pub async fn shutdown(&self) {
+        let session = self.state.lock().await.session.take();
+        if let Some(session) = session {
+            session.stop().await;
+        }
+    }
+}
+
 pub async fn fetch(session: &Arc<Session>, source: &str, client: &Client, headers: &HeaderMap) -> Result<Vec<u8>> {
     if is_magnet(source) {
         let opts = AddTorrentOptions { list_only: true, ..Default::default() };
@@ -166,5 +257,44 @@ mod tests {
     #[test]
     fn rejects_garbage_metadata() {
         assert!(metadata(b"not a torrent").is_err());
+    }
+
+    async fn offline_session(dir: &Path) -> Result<Arc<Session>> {
+        let opts = SessionOptions {
+            dht: None,
+            listen: None,
+            disable_local_service_discovery: true,
+            disable_trackers: true,
+            ..Default::default()
+        };
+        Session::new_with_opts(dir.to_path_buf(), opts).await.map_err(failed)
+    }
+    #[tokio::test(flavor = "multi_thread")]
+    async fn hub_stops_the_session_only_when_idle() {
+        let dir = std::env::temp_dir().join(format!("pulse-hub-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let idle = Duration::from_millis(200);
+        let hub = TorrentHub::new(Handle::current(), idle);
+        let wait = || tokio::time::sleep(idle * 3);
+
+        let first = hub.acquire(offline_session(&dir)).await.unwrap();
+        let second = hub.acquire(offline_session(&dir)).await.unwrap();
+        assert!(Arc::ptr_eq(&first, &second), "both users share one session");
+
+        drop(first);
+        wait().await;
+        assert!(hub.is_running().await, "still in use by the second download");
+
+        drop(second);
+        tokio::time::sleep(idle / 4).await;
+        let again = hub.acquire(offline_session(&dir)).await.unwrap();
+        wait().await;
+        assert!(hub.is_running().await, "a new download during the grace period keeps it alive");
+
+        drop(again);
+        wait().await;
+        assert!(!hub.is_running().await, "stopped after the grace period with no users");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

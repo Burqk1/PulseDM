@@ -7,7 +7,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use base64::Engine as _;
 use librqbit::api::TorrentIdOrHash;
 use librqbit::limits::LimitsConfig;
-use librqbit::{AddTorrent, AddTorrentOptions, AddTorrentResponse, Session, TorrentStatsState};
+use librqbit::{AddTorrent, AddTorrentOptions, AddTorrentResponse, TorrentStatsState};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, USER_AGENT};
 use reqwest::{Client, Url};
 use serde::{Deserialize, Serialize};
@@ -385,7 +385,7 @@ struct Inner {
     config_dirty: AtomicBool,
     shutting_down: AtomicBool,
     tools: Tools,
-    torrents: tokio::sync::Mutex<Option<Arc<Session>>>,
+    torrents: Arc<torrent::TorrentHub>,
 }
 
 #[derive(Clone)]
@@ -453,7 +453,7 @@ impl Engine {
             dirty: AtomicBool::new(false),
             config_dirty: AtomicBool::new(false),
             shutting_down: AtomicBool::new(false),
-            torrents: tokio::sync::Mutex::new(None),
+            torrents: torrent::TorrentHub::new(Handle::current(), torrent::IDLE_SHUTDOWN),
         });
         ensure_category_dirs(&inner.config.read().unwrap());
         inner.clone().spawn_ticker();
@@ -790,9 +790,7 @@ impl Engine {
         }
         self.inner.save();
         self.inner.save_config();
-        if let Some(session) = self.inner.torrents.lock().await.take() {
-            session.stop().await;
-        }
+        self.inner.torrents.shutdown().await;
     }
 
     fn ids(&self) -> Vec<Uuid> {
@@ -1529,18 +1527,13 @@ impl Inner {
         }
     }
 
-    async fn torrent_session(&self) -> Result<Arc<Session>> {
-        let mut slot = self.torrents.lock().await;
-        if let Some(session) = slot.as_ref() {
-            return Ok(session.clone());
-        }
+    async fn torrent_session(&self) -> Result<torrent::SessionLease> {
         let (dir, limit) = {
             let cfg = self.config.read().unwrap();
             (cfg.download_dir.clone(), cfg.speed_limit)
         };
-        let session = torrent::session(&dir, &self.torrent_dir(), limit).await?;
-        *slot = Some(session.clone());
-        Ok(session)
+        let state = self.torrent_dir();
+        self.torrents.acquire(async move { torrent::session(&dir, &state, limit).await }).await
     }
 
     async fn drive_torrent(
