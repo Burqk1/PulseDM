@@ -148,6 +148,7 @@ mod tests {
         assert!(!is_source("https://example.com/torrent"));
     }
 
+    #[test]
     fn names_from_sources() {
         assert_eq!(display_name("magnet:?xt=urn:btih:0123456789abcdef&dn=Big%20Buck%20Bunny"), "Big Buck Bunny");
         assert_eq!(display_name("magnet:?xt=urn:btih:0123456789abcdef"), "magnet-01234567");

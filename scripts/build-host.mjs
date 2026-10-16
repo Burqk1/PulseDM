@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const cargo = process.platform === "win32" ? "cargo.exe" : "cargo";
 
+await import("./sweep.mjs").catch((e) => console.warn(`sweep skipped: ${e.message}`));
+
 const triple = /host: (\S+)/.exec(execFileSync("rustc", ["-vV"], { encoding: "utf8" }))[1];
 execFileSync(cargo, ["build", "--release", "-p", "pulse-host"], { cwd: root, stdio: "inherit" });
 
