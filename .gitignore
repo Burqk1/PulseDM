@@ -1,0 +1,16 @@
+.DS_Store
+node_modules
+/build
+/.svelte-kit
+/package
+/target
+.env
+.env.*
+!.env.example
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+# Extension signing key (only the public half goes into the manifest)
+/keys/*.pem
+
+# Built by scripts/build-host.mjs
+/src-tauri/binaries/

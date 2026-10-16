@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "Pulse DM",
+  "version": "0.2.0",
+  "description": "İndirmeleri Pulse DM'e aktarır: çok bağlantılı hızlı indirme, devam ettirme, video yakalama.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAkgO6aBTooqj9JFMov9b8vAHZFUW5B9jhXhMZEGufsgU5UqvBcN/jz9oQbD83carwihs9fKlgYziq5JANxPtMOcg5XCKArgkI6GWqCR4guJerqaO2vW6IRQl9dmRut2ZzdvKNcjJO9HFDSsIJxpYRWdSJIO4DerD0260ZkMY2nNtgEJ3ZfVA6sUlkIv5fAzSSNKRygGwYLyGj45ngkZIuR/NhD/A8bKGQmIQoCok9PhBQ4S0ZcVZmCt8+zrfFWW54FzeasyObba+vd4PI910SZfOMLJDAs+Hky/moT/8qlgZTL9mgwPWN3vmyKXa9PpJPemhJ58BOlstG2tLixhyonwIDAQAB",
+  "permissions": [
+    "downloads",
+    "nativeMessaging",
+    "cookies",
+    "contextMenus",
+    "storage",
+    "webRequest"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Pulse DM"
+  },
+  "icons": {
+    "16": "icons/32.png",
+    "32": "icons/32.png",
+    "48": "icons/64.png",
+    "128": "icons/128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "all_frames": true,
+      "run_at": "document_idle"
+    }
+  ]
+}

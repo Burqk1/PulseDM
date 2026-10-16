@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <title>Pulse DM</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <img src="icons/32.png" alt="" width="20" height="20" />
+      <b>Pulse DM</b>
+      <span id="status" class="status">…</span>
+    </header>
+
+    <label class="row toggle">
+      <span>İndirmeleri yakala</span>
+      <input type="checkbox" id="enabled" />
+    </label>
+    <p class="muted hint">Videoların üzerine gelince çıkan <b>Pulse DM ile indir</b> butonunu kullan.</p>
+
+    <button id="bypass" class="secondary">Sonraki indirmeyi tarayıcıya bırak</button>
+
+    <details>
+      <summary>Ayarlar</summary>
+      <label>Yakalanacak uzantılar <span class="muted">(boş = hepsi)</span>
+        <textarea id="extensions" rows="3"></textarea>
+      </label>
+      <label>En küçük boyut (MB)
+        <input type="number" id="minSizeMb" min="0" step="1" />
+      </label>
+      <button id="save">Kaydet</button>
+    </details>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

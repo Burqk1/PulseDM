@@ -1,0 +1,30 @@
+[package]
+name = "pulse-engine"
+version = "0.1.0"
+edition = "2024"
+description = "Segmented, resumable download engine for Pulse DM"
+license = "MIT"
+
+[dependencies]
+tokio = { workspace = true, features = ["process", "io-util"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "socks"] }
+base64 = "0.22"
+aes = "0.8"
+cbc = { version = "0.1", features = ["alloc"] }
+httpdate = "1"
+sys-locale = "0.3"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+futures-util = "0.3"
+tokio-util = "0.7"
+thiserror = "2"
+uuid = { version = "1", features = ["v4", "serde"] }
+percent-encoding = "2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_IO", "Win32_System_Ioctl", "Win32_Storage_FileSystem"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["net", "io-util"] }

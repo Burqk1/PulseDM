@@ -1,0 +1,186 @@
+:root {
+  --bg: #1c1c1c;
+  --panel: #202020;
+  --panel-2: #2b2b2b;
+  --hover: #2f2f2f;
+  --border: #333333;
+  --text: #e8e8e8;
+  --muted: #9a9a9a;
+  --accent: #3b82f6;
+  --accent-soft: rgb(59 130 246 / 0.16);
+  --ok: #22c55e;
+  --warn: #f59e0b;
+  --danger: #ef4444;
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --bg: #f3f3f3;
+  --panel: #fbfbfb;
+  --panel-2: #ffffff;
+  --hover: #eaeaea;
+  --border: #e0e0e0;
+  --text: #1b1b1b;
+  --muted: #6b6b6b;
+  --accent: #2563eb;
+  --accent-soft: rgb(37 99 235 / 0.12);
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.4 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  user-select: none;
+  overflow: hidden;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+.win-controls {
+  display: flex;
+  align-self: stretch;
+}
+
+.win-controls button {
+  width: 46px;
+  border: 0;
+  background: transparent;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.win-controls button:hover {
+  background: var(--hover);
+}
+
+.win-controls button.close:hover {
+  background: #c42b1c;
+  color: #fff;
+}
+
+.muted { color: var(--muted); }
+
+.small { font-size: 12px; margin: 0; }
+
+.wrap {
+  word-break: break-all;
+  user-select: text;
+}
+
+code {
+  font: 12px/1.4 "Cascadia Mono", Consolas, monospace;
+  background: var(--panel);
+  padding: 4px 6px;
+  border-radius: 5px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--panel-2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+}
+
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.btn.primary:hover:not(:disabled) {
+  filter: brightness(1.1);
+  background: var(--accent);
+}
+
+.btn.danger:hover {
+  color: var(--danger);
+}
+
+.danger-fill {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+.icon-btn {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  flex: none;
+}
+
+.icon-btn:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.icon-btn.boxed {
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  height: auto;
+  align-self: stretch;
+  min-height: 34px;
+  width: 36px;
+}
+
+input,
+textarea,
+select {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 7px 10px;
+  font: inherit;
+  outline: none;
+  user-select: text;
+  min-width: 0;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--accent);
+}
+
+input[type="range"] {
+  padding: 0;
+  accent-color: var(--accent);
+}
+
+input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+
+.spacer {
+  flex: 1;
+}
