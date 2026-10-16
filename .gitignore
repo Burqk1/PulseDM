@@ -14,3 +14,7 @@ vite.config.ts.timestamp-*
 
 # Built by scripts/build-host.mjs
 /src-tauri/binaries/
+
+# Update signing key (never commit; stored as GitHub secrets)
+/keys/*.key
+/keys/*.password

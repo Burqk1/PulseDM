@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+
+      - name: Check version matches tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          want="${GITHUB_REF_NAME#v}"
+          have=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          if [ "$want" != "$have" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match tauri.conf.json version $have (run: npm run release -- $want)"
+            exit 1
+          fi
+
+      - run: npm ci
+
+      - name: Test
+        run: cargo test -p pulse-engine -p pulse-host --release
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Pulse DM ${{ github.ref_name }}
+          releaseBody: See the assets below to download and install this version.
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true
+          args: --config "{\"bundle\":{\"createUpdaterArtifacts\":true}}"
