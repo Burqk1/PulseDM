@@ -1,6 +1,6 @@
 [package]
 name = "pulsedm"
-version = "0.1.0"
+version = "0.2.0"
 description = "Pulse DM - fast, free download manager"
 authors = ["Burqk1"]
 edition = "2024"

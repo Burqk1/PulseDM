@@ -3134,7 +3134,7 @@ dependencies = [
 
 [[package]]
 name = "pulse-engine"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aes",
  "base64 0.22.1",
@@ -3156,7 +3156,7 @@ dependencies = [
 
 [[package]]
 name = "pulse-host"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "serde",
@@ -3165,7 +3165,7 @@ dependencies = [
 
 [[package]]
 name = "pulsedm"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "md-5",
