@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Pulse DM",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "default_locale": "en",
   "description": "__MSG_extDescription__",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAkgO6aBTooqj9JFMov9b8vAHZFUW5B9jhXhMZEGufsgU5UqvBcN/jz9oQbD83carwihs9fKlgYziq5JANxPtMOcg5XCKArgkI6GWqCR4guJerqaO2vW6IRQl9dmRut2ZzdvKNcjJO9HFDSsIJxpYRWdSJIO4DerD0260ZkMY2nNtgEJ3ZfVA6sUlkIv5fAzSSNKRygGwYLyGj45ngkZIuR/NhD/A8bKGQmIQoCok9PhBQ4S0ZcVZmCt8+zrfFWW54FzeasyObba+vd4PI910SZfOMLJDAs+Hky/moT/8qlgZTL9mgwPWN3vmyKXa9PpJPemhJ58BOlstG2tLixhyonwIDAQAB",
