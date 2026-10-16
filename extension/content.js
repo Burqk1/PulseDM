@@ -145,6 +145,18 @@
     return link?.href ?? null;
   }
 
+  const REDDIT_STREAM = /https:\/\/v\.redd\.it\/[^"'\s]+?\.m3u8[^"'\s]*/;
+
+  function redditInfo(video) {
+    const player = closestDeep(video, "shreddit-player, shreddit-player-2") ?? video;
+    let stream = null;
+    for (const el of [player, video]) {
+      for (const attr of el.attributes ?? []) stream ??= REDDIT_STREAM.exec(attr.value)?.[0] ?? null;
+    }
+    const post = closestDeep(video, "shreddit-post");
+    return { stream: stream?.replaceAll("&amp;", "&") ?? null, postTitle: post?.getAttribute("post-title") ?? null };
+  }
+
   root.querySelector(".x").addEventListener("click", (e) => {
     e.stopPropagation();
     if (current) dismissed.add(current);
@@ -163,6 +175,7 @@
         page: location.href,
         permalink: permalink(video),
         title: document.title,
+        ...(/(^|\.)reddit\.com$/.test(location.hostname) ? redditInfo(video) : {}),
       },
       (r) => {
         label.textContent = chrome.runtime.lastError

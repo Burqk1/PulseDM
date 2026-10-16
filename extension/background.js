@@ -140,7 +140,19 @@ chrome.tabs.onUpdated.addListener((tabId, change) => {
 });
 chrome.tabs.onRemoved.addListener((tabId) => chrome.storage.session.remove(`media_${tabId}`));
 
-async function downloadVideo({ src, page, permalink, title }, tab) {
+async function redditStream(stream, tab) {
+  if (stream) return stream;
+  const key = `media_${tab?.id}`;
+  const seen = ((await chrome.storage.session.get(key))[key] ?? []).slice().reverse();
+  const reddit = seen.filter((m) => m.kind === "hls" && /^https:\/\/v\.redd\.it\//.test(m.url));
+  return (reddit.find((m) => m.master) ?? reddit[0])?.url ?? null;
+}
+
+async function downloadVideo({ src, page, permalink, title, stream: playerStream, postTitle }, tab) {
+  if (/(^|\.)reddit\.com$/.test(new URL(page).hostname)) {
+    const hls = await redditStream(playerStream, tab);
+    if (hls) return sendToPulse({ url: hls, referrer: page, media: true, filename: safeName(postTitle || title) });
+  }
   const pageUrl = permalink || page;
   const feedOnly = !permalink && /(^|\.)tiktok\.com$/.test(new URL(page).hostname) && !/\/video\/\d+/.test(page);
   if (feedOnly && /^https?:/i.test(src)) return sendToPulse({ url: src, referrer: page, filename: `${safeName(title)}.mp4` });

@@ -47,6 +47,7 @@
   const urls = $derived(extractUrls(urlText));
   const single = $derived(urls.length === 1 ? urls[0] : null);
   let mediaRequested = $state(false);
+  let draftTitle = $state<string | null>(null);
   const isMedia = $derived(!!single && (mediaRequested || isVideoSite(single)));
 
   const toolNames: Record<string, string> = { "yt-dlp": "video reader", ffmpeg: "video merger", Deno: "JavaScript engine" };
@@ -120,7 +121,7 @@
           username: user || null,
           password: pass || null,
           media_option: isMedia && !asFile ? option : null,
-          title: media?.title ?? null,
+          title: draftTitle ?? media?.title ?? null,
         });
         firstId ??= d.id;
       }
@@ -147,6 +148,7 @@
         urlText = draft.url;
         headers = draft.headers;
         mediaRequested = draft.media;
+        if (draft.media && draft.file_name) draftTitle = draft.file_name;
         if (draft.file_name) {
           name = draft.file_name;
           nameEdited = true;
@@ -187,7 +189,7 @@
       <div class="media-head">
         {#if media.thumbnail}<img class="thumb" src={media.thumbnail} alt="" />{/if}
         <div class="media-meta">
-          <b class="media-title" title={media.title}>{media.title}</b>
+          <b class="media-title" title={draftTitle ?? media.title}>{draftTitle ?? media.title}</b>
           <span class="muted">{[media.uploader, formatDuration(media.duration), media.site].filter(Boolean).join(" · ")}</span>
         </div>
       </div>
