@@ -37,7 +37,7 @@ jobs:
       - run: npm ci
 
       - name: Test
-        run: cargo test -p pulse-engine -p pulse-host --release
+        run: cargo test -p pulse-engine -p pulse-host
 
       - uses: tauri-apps/tauri-action@v0
         env:
