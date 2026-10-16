@@ -63,6 +63,7 @@
   let minSplitKb = $state(1024);
   let extensionPath = $state("");
   let autostart = $state(true);
+  let magnetHandler = $state(false);
 
   let queueDraft = $state<QueueConfig | null>(null);
   let queueIsNew = $state(false);
@@ -326,6 +327,7 @@
     minSplitKb = Math.round(config.min_split / 1024);
     settingsTab = tab;
     autostartEnabled().then((on) => (autostart = on), () => {});
+    api.magnetHandler().then((on) => (magnetHandler = on), () => {});
     settingsOpen = true;
   }
 
@@ -668,10 +670,10 @@
                 <input type="checkbox" checked={checked.has(d.id)} onchange={() => toggleCheck(d.id)} aria-label={t("Select")} />
               </label>
               <div class="cell name">
-                <span class="ficon">{@render icon(d.category, 15)}</span>
+                <span class="ficon">{@render icon(d.torrent ? "magnet" : d.category, 15)}</span>
                 <div class="name-text">
                   <span class="fname" title={d.file_name}>{d.file_name}</span>
-                  <span class="fcat">{t(CATEGORY_LABEL[d.category])}{#if d.queue !== "main"} · {queueName(d.queue)}{/if}</span>
+                  <span class="fcat">{d.torrent ? "BitTorrent" : t(CATEGORY_LABEL[d.category])}{#if d.torrent && d.status === "downloading"} · {t("{n} peers", { n: d.connections })}{/if}{#if d.queue !== "main"} · {queueName(d.queue)}{/if}</span>
                 </div>
               </div>
               <div class="cell num">{d.parts && d.status !== "completed" ? `${formatBytes(d.downloaded)}+` : formatBytes(d.size)}</div>
@@ -780,6 +782,10 @@
               <input type="checkbox" bind:checked={draft.keep_server_time} />
             </label>
             <label class="srow">
+              <div><b>{t("Open magnet links with Pulse DM")}</b><span>{t("Clicking a magnet link anywhere opens it in Pulse DM instead of another torrent program.")}</span></div>
+              <input type="checkbox" bind:checked={magnetHandler} onchange={async () => { try { magnetHandler = await api.setMagnetHandler(magnetHandler); } catch (e) { magnetHandler = !magnetHandler; flash(String(e)); } }} />
+            </label>
+            <label class="srow">
               <div><b>{t("Ignore SSL certificate errors")}</b><span class="warn-text">{t("Unsafe. Only turn on for sites you trust that have a broken certificate.")}</span></div>
               <input type="checkbox" bind:checked={draft.ignore_tls_errors} />
             </label>
@@ -864,6 +870,13 @@
               </button>
             </div>
             {#if extensionPath}<code class="wrap">{extensionPath}</code>{/if}
+            <p class="browser-head"><b>Firefox</b></p>
+            <p>{@render rich(t("Open the link below **in Firefox** and press **Add**."))}</p>
+            <div>
+              <button type="button" class="btn" onclick={() => run(api.openFirefoxExtension())}>
+                {@render icon("open")} {t("Get the Firefox extension")}
+              </button>
+            </div>
             <p class="muted small">{t("The extension passes downloads on with the browser's cookies, so sites that need a sign-in work too.")}</p>
           {/if}
         </div>
@@ -1049,6 +1062,11 @@
     background: transparent;
     padding: 4px 0;
     width: 100%;
+  }
+  .browser-head {
+    margin-top: 6px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
   }
   .about {
     align-items: center;

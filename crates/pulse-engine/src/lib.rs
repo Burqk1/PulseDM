@@ -11,6 +11,7 @@ mod probe;
 mod schedule;
 mod segment;
 mod tools;
+pub mod torrent;
 
 pub use category::category_of;
 pub use engine::{
@@ -23,3 +24,4 @@ pub use media::{MediaInfo, MediaOption, MediaState, StreamState};
 pub use schedule::{QueueConfig, Schedule};
 pub use segment::SegmentState;
 pub use tools::ToolProgress;
+pub use torrent::TorrentState;

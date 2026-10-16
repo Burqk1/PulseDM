@@ -4,6 +4,7 @@
 
 <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
     {#if name === "link"}<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7" /><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" />
+    {:else if name === "magnet"}<path d="M6 3v8a6 6 0 0 0 12 0V3" /><path d="M10 3v8a2 2 0 0 0 4 0V3" /><path d="M6 7h4M14 7h4" />
     {:else if name === "pause"}<rect x="6" y="5" width="4" height="14" rx="1" /><rect x="14" y="5" width="4" height="14" rx="1" />
     {:else if name === "play"}<path d="M7 4l13 8-13 8z" />
     {:else if name === "stop"}<rect x="5" y="5" width="14" height="14" rx="2" />

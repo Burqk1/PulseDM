@@ -52,3 +52,21 @@ jobs:
           prerelease: false
           includeUpdaterJson: true
           args: --config src-tauri/tauri.release.conf.json
+
+      - name: Firefox extension
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WEB_EXT_API_KEY: ${{ secrets.AMO_JWT_ISSUER }}
+          WEB_EXT_API_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+        run: |
+          node scripts/build-firefox.mjs
+          npx web-ext lint -s target/firefox-extension --warnings-as-errors=false
+          if [ -n "$WEB_EXT_API_KEY" ]; then
+            npx web-ext sign -s target/firefox-extension -a target/xpi --channel unlisted --approval-timeout 900000
+          else
+            echo "::warning::AMO_JWT_ISSUER/AMO_JWT_SECRET not set; the Firefox extension is not signed"
+            npx web-ext build -s target/firefox-extension -a target/xpi --overwrite-dest
+          fi
+          cp "$(ls target/xpi/*.xpi target/xpi/*.zip 2>/dev/null | head -1)" target/pulse-dm-firefox.xpi
+          gh release upload "$GITHUB_REF_NAME" target/pulse-dm-firefox.xpi --clobber

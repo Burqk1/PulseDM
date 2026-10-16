@@ -234,16 +234,21 @@
             <dt>{t("Downloaded:")}</dt><dd>{formatBytes(d.downloaded)} ({t("{n}%", { n: Math.floor(pct) })})</dd>
             <dt>{t("Speed:")}</dt><dd>{d.status === "downloading" ? formatSpeed(d.speed) : "—"}</dd>
             <dt>{t("Time left:")}</dt><dd>{d.status === "downloading" ? formatEta(d.eta_secs) || "—" : "—"}</dd>
-            <dt>{t("Resumable:")}</dt><dd class={d.resumable ? "ok" : "bad"}>{d.resumable ? t("Yes") : t("No")}</dd>
+            {#if d.torrent}
+              <dt>{t("Peers:")}</dt><dd>{d.status === "downloading" ? d.connections : "—"}</dd>
+            {:else}
+              <dt>{t("Resumable:")}</dt><dd class={d.resumable ? "ok" : "bad"}>{d.resumable ? t("Yes") : t("No")}</dd>
+            {/if}
             {#if d.error}<dt>{t("Error:")}</dt><dd class="bad wrap">{d.error}</dd>{/if}
           </dl>
-          {#if d.status === "failed" || d.status === "paused"}
+          {#if !d.torrent && (d.status === "failed" || d.status === "paused")}
             <div class="field-row">
               <input bind:value={newUrl} placeholder={t("If the link expired, paste a new one")} />
               <button class="btn" onclick={replaceUrl}>{t("Refresh")}</button>
             </div>
           {/if}
         {:else if tab === "speed"}
+          {#if !d.torrent}
           <label class="row">
             <span>{t("Connections")}</span>
             <select bind:value={optConn}>
@@ -251,6 +256,7 @@
               {#each [1, 2, 4, 6, 8, 12, 16, 24, 32] as n (n)}<option value={String(n)}>{n}</option>{/each}
             </select>
           </label>
+          {/if}
           <label class="row">
             <span>{t("Speed limit (MB/s)")}</span>
             <input type="number" min="0" step="0.5" bind:value={optLimitMb} placeholder={t("0 = unlimited")} />

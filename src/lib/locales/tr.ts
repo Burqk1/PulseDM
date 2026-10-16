@@ -179,6 +179,8 @@ export const tr: Record<string, string> = {
   "Turn on **Developer mode** in the top right.": "Sağ üstten **Geliştirici modu**'nu aç.",
   "Press **Load unpacked** and choose the folder below.": "**Paketlenmemiş öğe yükle**'ye bas ve aşağıdaki klasörü seç.",
   "Open the extension folder": "Eklenti klasörünü aç",
+  "Open the link below **in Firefox** and press **Add**.": "Aşağıdaki bağlantıyı **Firefox'ta** aç ve **Ekle**'ye bas.",
+  "Get the Firefox extension": "Firefox eklentisini indir",
   "The extension passes downloads on with the browser's cookies, so sites that need a sign-in work too.":
     "Eklenti, indirmeleri tarayıcının çerezleriyle aktarır; giriş gerektiren sitelerden indirme de çalışır.",
   "Save": "Kaydet",
@@ -273,4 +275,13 @@ export const tr: Record<string, string> = {
   "Part details": "Parça bilgisi",
   "{n} connections active": "{n} bağlantı aktif",
   "Try again": "Tekrar dene",
+  "Add torrent": "Torrent ekle",
+  "Open a .torrent file": ".torrent dosyası aç",
+  "The files are downloaded from other BitTorrent users (peers). Speed depends on how many share it.":
+    "Dosyalar diğer BitTorrent kullanıcılarından (eşlerden) indirilir. Hız, paylaşan kişi sayısına bağlıdır.",
+  "{n} peers": "{n} eş",
+  "Peers:": "Eşler:",
+  "Open magnet links with Pulse DM": "Magnet linklerini Pulse DM ile aç",
+  "Clicking a magnet link anywhere opens it in Pulse DM instead of another torrent program.":
+    "Bir magnet linkine tıklayınca başka bir torrent programı yerine Pulse DM açılır.",
 };

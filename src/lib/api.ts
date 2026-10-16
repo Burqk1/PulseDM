@@ -31,6 +31,7 @@ export interface Download {
   segments: Segment[];
   parts: [number, number] | null;
   category: Category;
+  torrent: boolean;
   added_at: number;
   completed_at: number | null;
 }
@@ -169,6 +170,9 @@ export const api = {
   openFile: (id: string) => invoke<void>("open_file", { id }),
   showInFolder: (id: string) => invoke<void>("show_in_folder", { id }),
   openExtensionFolder: () => invoke<string>("open_extension_folder"),
+  openFirefoxExtension: () => invoke<void>("open_firefox_extension"),
+  magnetHandler: () => invoke<boolean>("magnet_handler"),
+  setMagnetHandler: (enabled: boolean) => invoke<boolean>("set_magnet_handler", { enabled }),
   quit: () => invoke<void>("quit_app"),
   probeMedia: (url: string, headers: [string, string][] = []) => invoke<MediaInfo>("probe_media", { url, headers }),
   probeUrl: (url: string, headers: [string, string][] = []) => invoke<UrlInfo>("probe_url", { url, headers }),
@@ -211,8 +215,41 @@ export function formatEta(secs: number | null): string {
   return `${Math.floor(h / 24)}${d} ${h % 24}${hr}`;
 }
 
+const MAGNET = /magnet:\?[^\s"'<>]+/gi;
+const TORRENT_PATH = /^(?:[a-zA-Z]:\\|\\\\|\/)[^\n"<>|*?]*\.torrent$/i;
+
 export function extractUrls(text: string): string[] {
-  return [...new Set(text.match(/https?:\/\/.+?(?=https?:\/\/|[\s"'<>]|$)/g) ?? [])];
+  const magnets = text.match(MAGNET) ?? [];
+  const rest = text.replace(MAGNET, " ");
+  const links = rest.match(/https?:\/\/.+?(?=https?:\/\/|[\s"'<>]|$)/g) ?? [];
+  const paths = rest.split(/\r?\n/).map((l) => l.trim()).filter((l) => TORRENT_PATH.test(l));
+  return [...new Set([...magnets, ...links, ...paths])];
+}
+
+export function isTorrentSource(url: string): boolean {
+  const s = url.trim();
+  return /^magnet:/i.test(s) || /\.torrent$/i.test(s.split(/[?#]/)[0]);
+}
+
+export function torrentName(url: string): string {
+  const s = url.trim();
+  if (/^magnet:/i.test(s)) {
+    try {
+      const params = new URLSearchParams(s.slice(s.indexOf("?") + 1));
+      const dn = params.get("dn")?.trim();
+      if (dn) return dn;
+      const xt = params.get("xt") ?? "";
+      return `magnet-${xt.split(":").pop()?.slice(0, 8) ?? ""}`;
+    } catch {
+      return "magnet";
+    }
+  }
+  const last = s.split(/[?#]/)[0].split(/[\\/]/).pop() ?? "";
+  try {
+    return decodeURIComponent(last).replace(/\.torrent$/i, "") || "torrent";
+  } catch {
+    return last.replace(/\.torrent$/i, "") || "torrent";
+  }
 }
 
 export const MB = 1024 * 1024;

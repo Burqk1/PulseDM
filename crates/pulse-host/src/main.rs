@@ -65,8 +65,8 @@ fn write_message(out: &mut impl Write, value: &Value) -> io::Result<()> {
 }
 
 fn hand_off(add: AddMessage) -> Result<(), String> {
-    if !(add.url.starts_with("http://") || add.url.starts_with("https://")) {
-        return Err("only http(s) links are supported".into());
+    if !(add.url.starts_with("http://") || add.url.starts_with("https://") || add.url.starts_with("magnet:")) {
+        return Err("only http(s) and magnet links are supported".into());
     }
     let mut headers = add.headers;
     let mut push = |k: &str, v: Option<String>| {

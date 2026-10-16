@@ -7,6 +7,27 @@
   const msg = (key) => chrome.i18n.getMessage(key);
   const IDLE = msg("downloadWithPulse");
 
+  let catchMagnets = false;
+  const readMagnetSetting = () =>
+    chrome.storage.local.get(["enabled", "magnets"], (s) => (catchMagnets = s.enabled !== false && s.magnets !== false));
+  readMagnetSetting();
+  chrome.storage.onChanged.addListener((_, area) => area === "local" && readMagnetSetting());
+
+  document.addEventListener(
+    "click",
+    (e) => {
+      if (!catchMagnets || e.defaultPrevented || e.button !== 0) return;
+      const link = e.composedPath().find((n) => n instanceof HTMLAnchorElement && /^magnet:/i.test(n.href));
+      if (!link) return;
+      e.preventDefault();
+      e.stopPropagation();
+      chrome.runtime.sendMessage({ type: "magnet", url: link.href }, (r) => {
+        if (chrome.runtime.lastError || !r?.ok) location.href = link.href;
+      });
+    },
+    true,
+  );
+
   let current = null;
   let hideTimer = 0;
   let frame = 0;
@@ -15,25 +36,39 @@
   const host = document.createElement("div");
   host.style.cssText = "position:fixed;z-index:2147483647;display:none;top:0;left:0;";
   const root = host.attachShadow({ mode: "closed" });
-  root.innerHTML = `
-    <style>
+  const el = (tag, props = {}, ...children) => {
+    const node = Object.assign(document.createElement(tag), props);
+    node.append(...children);
+    return node;
+  };
+  const SVG = "http://www.w3.org/2000/svg";
+  const icon = document.createElementNS(SVG, "svg");
+  for (const [k, v] of Object.entries({
+    width: 14, height: 14, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor",
+    "stroke-width": 2.4, "stroke-linecap": "round", "stroke-linejoin": "round",
+  })) icon.setAttribute(k, v);
+  const path = document.createElementNS(SVG, "path");
+  path.setAttribute("d", "M12 3v12M7 10l5 5 5-5M5 21h14");
+  icon.append(path);
+
+  const label = el("span", { textContent: IDLE });
+  root.append(
+    el("style", {
+      textContent: `
       .bar { display:flex; align-items:stretch; font:600 12px/1 "Segoe UI",system-ui,sans-serif;
              background:#2563eb; color:#fff; border-radius:7px; overflow:hidden;
              box-shadow:0 2px 12px rgba(0,0,0,.4); user-select:none; }
       button { all:unset; cursor:pointer; display:flex; align-items:center; gap:6px; padding:7px 10px; }
       button:hover { background:rgba(255,255,255,.16); }
-      .x { padding:7px 8px; border-left:1px solid rgba(255,255,255,.25); opacity:.85; }
-    </style>
-    <div class="bar">
-      <button class="dl" title="${msg("downloadThisVideo")}">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
-             stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
-        <span></span>
-      </button>
-      <button class="x" title="${msg("hideForVideo")}">✕</button>
-    </div>`;
-  const label = root.querySelector("span");
-  label.textContent = IDLE;
+      .x { padding:7px 8px; border-left:1px solid rgba(255,255,255,.25); opacity:.85; }`,
+    }),
+    el(
+      "div",
+      { className: "bar" },
+      el("button", { className: "dl", title: msg("downloadThisVideo") }, icon, label),
+      el("button", { className: "x", title: msg("hideForVideo"), textContent: "✕" }),
+    ),
+  );
 
   const big = (r) => r.width >= MIN_W && r.height >= MIN_H;
   const inside = (r, x, y) => x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;

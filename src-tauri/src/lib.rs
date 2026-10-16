@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_updater::UpdaterExt;
@@ -388,6 +389,25 @@ fn open_extension_folder(app: AppHandle) -> CmdResult<String> {
     Ok(path)
 }
 
+#[tauri::command]
+fn magnet_handler(app: AppHandle) -> bool {
+    app.deep_link().is_registered("magnet").unwrap_or(false)
+}
+
+#[tauri::command]
+fn set_magnet_handler(app: AppHandle, enabled: bool) -> CmdResult<bool> {
+    let links = app.deep_link();
+    if enabled { links.register("magnet") } else { links.unregister("magnet") }.map_err(|e| e.to_string())?;
+    Ok(links.is_registered("magnet").unwrap_or(enabled))
+}
+
+#[tauri::command]
+fn open_firefox_extension(app: AppHandle) -> CmdResult<()> {
+    app.opener()
+        .open_url("https://github.com/Burqk1/PulseDM/releases/latest/download/pulse-dm-firefox.xpi", None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
 fn run_hidden(program: &str, args: &[&str]) -> CmdResult<()> {
     let mut cmd = std::process::Command::new(program);
     cmd.args(args);
@@ -463,7 +483,21 @@ fn on_status_change(app: &AppHandle, d: &DownloadView) {
     }
 }
 
+fn torrent_arg(args: &[String]) -> Option<String> {
+    args.iter().skip(1).find(|a| pulse_engine::torrent::is_source(a)).cloned()
+}
+
+fn open_torrent(app: &AppHandle, source: String) {
+    show_add_window(app, AddDraft { url: source, headers: Vec::new(), file_name: None, media: false });
+}
+
 fn handle_args(app: &AppHandle, args: &[String]) {
+    if !args.iter().any(|a| a == ADD_ARG) {
+        if let Some(source) = torrent_arg(args) {
+            open_torrent(app, source);
+        }
+        return;
+    }
     let Some(pos) = args.iter().position(|a| a == ADD_ARG) else { return };
     let Some(payload) = args.get(pos + 1) else { return };
     let request = base64::engine::general_purpose::URL_SAFE_NO_PAD
@@ -586,7 +620,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
-            if args.iter().any(|a| a == ADD_ARG) {
+            if args.iter().any(|a| a == ADD_ARG) || torrent_arg(&args).is_some() {
                 handle_args(app, &args);
             } else {
                 show_main_window(app);
@@ -597,6 +631,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec![HIDDEN_ARG]),
@@ -636,8 +671,17 @@ pub fn run() {
                 let _ = std::fs::write(&first_run_marker, b"");
             }
 
+            let handle = app.handle().clone();
+            app.deep_link().on_open_url(move |event| {
+                for url in event.urls() {
+                    if pulse_engine::torrent::is_source(url.as_str()) {
+                        open_torrent(&handle, url.to_string());
+                    }
+                }
+            });
+
             let args: Vec<String> = std::env::args().collect();
-            if !args.iter().any(|a| a == HIDDEN_ARG || a == ADD_ARG) {
+            if !args.iter().any(|a| a == HIDDEN_ARG || a == ADD_ARG) && torrent_arg(&args).is_none() {
                 show_main_window(app.handle());
             }
             handle_args(app.handle(), &args);
@@ -674,6 +718,9 @@ pub fn run() {
             set_after_all,
             cancel_shutdown,
             open_extension_folder,
+            open_firefox_extension,
+            magnet_handler,
+            set_magnet_handler,
             quit_app,
             open_file,
             show_in_folder,
@@ -681,9 +728,18 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building Pulse DM");
 
-    app.run(|_app, event| {
-        if let RunEvent::ExitRequested { code: None, api, .. } = event {
-            api.prevent_exit();
+    app.run(|_app, event| match event {
+        RunEvent::ExitRequested { code: None, api, .. } => api.prevent_exit(),
+        #[cfg(target_os = "macos")]
+        RunEvent::Opened { urls } => {
+            for url in urls {
+                let source =
+                    url.to_file_path().map(|p| p.to_string_lossy().into_owned()).unwrap_or_else(|_| url.to_string());
+                if pulse_engine::torrent::is_source(&source) {
+                    open_torrent(_app, source);
+                }
+            }
         }
+        _ => {}
     });
 }

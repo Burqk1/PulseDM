@@ -26,6 +26,7 @@ const setToml = (file) => edit(file, (text) => text.replace(/^version = ".*"$/m,
 
 setJson("package.json");
 setJson("src-tauri/tauri.conf.json");
+setJson("extension/manifest.json");
 setToml("src-tauri/Cargo.toml");
 setToml("crates/pulse-engine/Cargo.toml");
 setToml("crates/pulse-host/Cargo.toml");

@@ -5,11 +5,20 @@ const msg = (key) => chrome.i18n.getMessage(key);
 
 document.documentElement.lang = chrome.i18n.getUILanguage();
 for (const el of document.querySelectorAll("[data-i18n]")) el.textContent = msg(el.dataset.i18n);
-for (const el of document.querySelectorAll("[data-i18n-html]")) el.innerHTML = msg(el.dataset.i18nHtml);
+for (const el of document.querySelectorAll("[data-i18n-html]")) {
+  for (const [i, part] of msg(el.dataset.i18nHtml).split(/<\/?b>/).entries()) {
+    if (!part) continue;
+    const node = i % 2 ? document.createElement("b") : document.createTextNode(part);
+    if (i % 2) node.textContent = part;
+    el.append(node);
+  }
+}
 
 async function init() {
   const s = { ...DEFAULTS, ...(await chrome.storage.local.get(Object.keys(DEFAULTS))) };
   $("enabled").checked = s.enabled;
+  $("magnets").checked = s.magnets;
+  $("magnets").onchange = () => chrome.storage.local.set({ magnets: $("magnets").checked });
   $("extensions").value = s.extensions;
   $("minSizeMb").value = s.minSizeMb;
 

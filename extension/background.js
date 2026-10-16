@@ -41,10 +41,12 @@ async function ping() {
   }
 }
 
+const action = chrome.action ?? chrome.browserAction;
+
 async function flashBadge(text, color) {
-  await chrome.action.setBadgeBackgroundColor({ color });
-  await chrome.action.setBadgeText({ text });
-  setTimeout(() => chrome.action.setBadgeText({ text: "" }), 2500);
+  await action.setBadgeBackgroundColor({ color });
+  await action.setBadgeText({ text });
+  setTimeout(() => action.setBadgeText({ text: "" }), 2500);
 }
 
 async function shouldCapture(item, name) {
@@ -63,26 +65,103 @@ async function shouldCapture(item, name) {
   return true;
 }
 
-chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
-  (async () => {
-    const name = baseName(item.filename);
-    if (!(await shouldCapture(item, name))) return;
+async function capture(item, name) {
+  if (!(await shouldCapture(item, name))) return false;
+  try {
+    await sendToPulse({ url: item.finalUrl || item.url, filename: name, referrer: item.referrer });
+    await chrome.downloads.cancel(item.id);
+    await chrome.downloads.erase({ id: item.id });
+    await flashBadge("✓", "#2563eb");
+    return true;
+  } catch (e) {
+    console.warn("Could not hand off to Pulse DM, the browser downloads it:", e);
+    return false;
+  }
+}
+
+const urlName = (url) => {
+  try {
+    return decodeURIComponent(baseName(new URL(url).pathname));
+  } catch {
+    return "";
+  }
+};
+
+function dispositionName(value) {
+  const star = /filename\*\s*=\s*[^']*'[^']*'([^;]+)/i.exec(value);
+  if (star) {
     try {
-      await sendToPulse({ url: item.finalUrl || item.url, filename: name, referrer: item.referrer });
-      await chrome.downloads.cancel(item.id);
-      await chrome.downloads.erase({ id: item.id });
-      await flashBadge("✓", "#2563eb");
-    } catch (e) {
-      console.warn("Could not hand off to Pulse DM, the browser downloads it:", e);
-    }
-  })().finally(() => {
-    try {
-      suggest();
+      return baseName(decodeURIComponent(star[1].trim().replace(/^"|"$/g, "")));
     } catch {
     }
+  }
+  const plain = /filename\s*=\s*(?:"([^"]*)"|([^;]+))/i.exec(value);
+  return baseName((plain?.[1] ?? plain?.[2] ?? "").trim());
+}
+
+const INLINE_TYPES = /^(text\/|image\/|video\/|audio\/|multipart\/|application\/(pdf|json|xml|javascript|x-javascript|ecmascript|xhtml\+xml|rss\+xml|atom\+xml)\b)|\+(xml|json)\b/;
+const HANDLED_FOR_MS = 15_000;
+const handled = new Map();
+
+function markHandled(url) {
+  const now = Date.now();
+  handled.set(url, now);
+  for (const [u, at] of handled) if (now - at > HANDLED_FOR_MS) handled.delete(u);
+}
+
+const handledRecently = (url) => Date.now() - (handled.get(url) ?? 0) < HANDLED_FOR_MS;
+
+function captureResponses() {
+  chrome.webRequest.onHeadersReceived.addListener(
+    async (d) => {
+      if (d.method !== "GET" || d.statusCode < 200 || d.statusCode >= 300 || d.statusCode === 204 || d.statusCode === 205) {
+        return {};
+      }
+      const disposition = header(d.responseHeaders, "content-disposition");
+      const type = header(d.responseHeaders, "content-type").toLowerCase().trim();
+      const attachment = /^\s*attachment\b/i.test(disposition);
+      if (!attachment && (!type || INLINE_TYPES.test(type))) return {};
+      const name = dispositionName(disposition) || urlName(d.url);
+      const item = { url: d.url, incognito: d.incognito, totalBytes: Number(header(d.responseHeaders, "content-length")) || 0 };
+      if (!(await shouldCapture(item, name))) return {};
+      try {
+        await sendToPulse({ url: d.url, filename: name, referrer: d.originUrl || d.documentUrl });
+        markHandled(d.url);
+        flashBadge("✓", "#2563eb");
+        return { cancel: true };
+      } catch (e) {
+        console.warn("Could not hand off to Pulse DM, the browser downloads it:", e);
+        return {};
+      }
+    },
+    { urls: ["<all_urls>"], types: ["main_frame", "sub_frame"] },
+    ["blocking", "responseHeaders"],
+  );
+}
+
+if (chrome.downloads.onDeterminingFilename) {
+  chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
+    capture(item, baseName(item.filename)).finally(() => {
+      try {
+        suggest();
+      } catch {
+      }
+    });
+    return true;
   });
-  return true;
-});
+} else {
+  captureResponses();
+  chrome.downloads.onCreated.addListener(async (item) => {
+    if (!/^https?:/i.test(item.url) || item.byExtensionId) return;
+    if (handledRecently(item.url)) {
+      await chrome.downloads.cancel(item.id).catch(() => {});
+      await chrome.downloads.erase({ id: item.id }).catch(() => {});
+      return;
+    }
+    if (Date.now() - new Date(item.startTime).getTime() > 10_000) return;
+    if (await capture(item, baseName(item.filename) || urlName(item.url))) markHandled(item.url);
+  });
+}
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({ id: "pulse-link", title: chrome.i18n.getMessage("downloadWithPulse"), contexts: ["link"] });
@@ -91,7 +170,7 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   const url = info.menuItemId === "pulse-link" ? info.linkUrl : info.srcUrl;
-  if (!url || !/^https?:/i.test(url)) return;
+  if (!url || !/^(https?|magnet):/i.test(url)) return;
   try {
     await sendToPulse({ url, referrer: tab?.url, media: isVideoSite(url) });
     await flashBadge("✓", "#2563eb");
@@ -171,6 +250,14 @@ async function downloadVideo({ src, page, permalink, title, stream: playerStream
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (msg?.type === "ping") {
     ping().then(reply);
+  } else if (msg?.type === "magnet" && /^magnet:/i.test(msg.url)) {
+    sendToPulse({ url: msg.url, referrer: sender.tab?.url }).then(
+      () => {
+        flashBadge("✓", "#2563eb");
+        reply({ ok: true });
+      },
+      (e) => reply({ ok: false, error: String(e.message || e) }),
+    );
   } else if (msg?.type === "video") {
     downloadVideo(msg, sender.tab).then(
       () => reply({ ok: true }),

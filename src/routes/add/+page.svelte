@@ -13,7 +13,9 @@
     extractUrls,
     formatBytes,
     formatDuration,
+    isTorrentSource,
     isVideoSite,
+    torrentName,
     type MediaInfo,
     type QueueConfig,
     type ToolProgress,
@@ -48,7 +50,8 @@
   const single = $derived(urls.length === 1 ? urls[0] : null);
   let mediaRequested = $state(false);
   let draftTitle = $state<string | null>(null);
-  const isMedia = $derived(!!single && (mediaRequested || isVideoSite(single)));
+  const isTorrent = $derived(!!single && isTorrentSource(single));
+  const isMedia = $derived(!!single && !isTorrent && (mediaRequested || isVideoSite(single)));
 
   const toolNames: Record<string, string> = { "yt-dlp": "video reader", ffmpeg: "video merger", Deno: "JavaScript engine" };
 
@@ -59,6 +62,10 @@
     media = null;
     error = null;
     if (!url) return;
+    if (isTorrentSource(url)) {
+      if (!nameEdited) name = torrentName(url);
+      return;
+    }
     loading = true;
     try {
       if (isMedia) {
@@ -93,6 +100,15 @@
         inspect();
       }
     } catch {
+    }
+  }
+
+  async function pickTorrent() {
+    const picked = await openDialog({ filters: [{ name: "BitTorrent", extensions: ["torrent"] }] });
+    if (typeof picked === "string") {
+      urlText = picked;
+      nameEdited = false;
+      inspect();
     }
   }
 
@@ -170,7 +186,7 @@
 <svelte:window onkeydown={onKey} />
 
 <div class="window">
-  <TitleBar title={isMedia ? t("Download video") : t("Add download")} />
+  <TitleBar title={isMedia ? t("Download video") : isTorrent ? t("Add torrent") : t("Add download")} />
 
   <main use:fitWindow={{ width: 600, max: 720 }}>
     <div class="body">
@@ -183,6 +199,7 @@
         spellcheck="false"
       ></textarea>
       <button class="icon-btn boxed" title={t("Paste from clipboard")} aria-label={t("Paste from clipboard")} onclick={paste}><Icon name="clipboard" /></button>
+      <button class="icon-btn boxed" title={t("Open a .torrent file")} aria-label={t("Open a .torrent file")} onclick={pickTorrent}><Icon name="magnet" /></button>
     </div>
 
     {#if media}
@@ -219,6 +236,8 @@
         <div class="size-box" title={info?.resumable ? t("Can resume where it left off") : ""}>
           {#if loading}
             <span class="spinner"></span>
+          {:else if isTorrent}
+            <span class="ok">BitTorrent</span>
           {:else if info}
             <b>{formatBytes(info.size)}</b>
             <span class={info.resumable ? "ok" : "warn"}>{info.resumable ? t("✓ resumable") : t("not resumable")}</span>
@@ -254,6 +273,7 @@
       </div>
     {/if}
     {#if error}<p class="error wrap">{error}</p>{/if}
+    {#if isTorrent}<p class="muted small">{t("The files are downloaded from other BitTorrent users (peers). Speed depends on how many share it.")}</p>{/if}
     {#if info?.html}<p class="warn small">{t("This link returns a web page; the page will be downloaded, not a file.")}</p>{/if}
 
     <div class="actions">
