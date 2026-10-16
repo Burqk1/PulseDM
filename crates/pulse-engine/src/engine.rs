@@ -20,6 +20,7 @@ use crate::fsutil::{
     create_part_file, free_space, human_bytes, open_part_file, part_path, sanitize_file_name, unique_name,
 };
 use crate::hls::{self, HlsState};
+use crate::lang::text;
 use crate::limiter::RateLimiter;
 use crate::media::{self, MediaInfo, MediaState, Protocol, StreamState};
 use crate::probe::{expects_html, name_from_url, probe};
@@ -495,7 +496,13 @@ impl Engine {
     pub fn add(&self, req: AddRequest) -> Result<DownloadView> {
         let url = Url::parse(req.url.trim()).map_err(|e| EngineError::InvalidUrl(e.to_string()))?;
         if !matches!(url.scheme(), "http" | "https") {
-            return Err(EngineError::InvalidUrl(format!("desteklenmeyen protokol: {}", url.scheme())));
+            {
+                let scheme = url.scheme();
+                return Err(EngineError::InvalidUrl(text!(
+                    "unsupported protocol: {scheme}",
+                    "desteklenmeyen protokol: {scheme}"
+                )));
+            }
         }
         let cfg = self.config();
         let custom = req.file_name.as_deref().map(str::trim).filter(|n| !n.is_empty());
@@ -588,7 +595,13 @@ impl Engine {
     pub fn set_url(&self, id: Uuid, url: &str) -> Result<()> {
         let parsed = Url::parse(url.trim()).map_err(|e| EngineError::InvalidUrl(e.to_string()))?;
         if !matches!(parsed.scheme(), "http" | "https") {
-            return Err(EngineError::InvalidUrl(format!("desteklenmeyen protokol: {}", parsed.scheme())));
+            {
+                let scheme = parsed.scheme();
+                return Err(EngineError::InvalidUrl(text!(
+                    "unsupported protocol: {scheme}",
+                    "desteklenmeyen protokol: {scheme}"
+                )));
+            }
         }
         let mut result = Ok(());
         self.inner.update(id, |e| {
@@ -943,10 +956,11 @@ impl Inner {
                     return Err(EngineError::WebPage);
                 }
                 if !info.resumable || info.size != rec.size {
-                    return Err(EngineError::UrlMismatch(format!(
-                        "beklenen boyut {}, yeni bağlantıdaki {}",
-                        rec.size.map(human_bytes).unwrap_or_else(|| "?".into()),
-                        info.size.map(human_bytes).unwrap_or_else(|| "?".into())
+                    let want = rec.size.map(human_bytes).unwrap_or_else(|| "?".into());
+                    let got = info.size.map(human_bytes).unwrap_or_else(|| "?".into());
+                    return Err(EngineError::UrlMismatch(text!(
+                        "expected size {want}, the new link has {got}",
+                        "beklenen boyut {want}, yeni bağlantıdaki {got}"
                     )));
                 }
                 self.with_entry(id, |e| {
@@ -1500,11 +1514,6 @@ fn write_atomic(path: &Path, data: &[u8]) {
 
 const FOLDER_CATEGORIES: [&str; 6] = ["archive", "document", "image", "audio", "program", "video"];
 
-fn turkish_system() -> bool {
-    static TURKISH: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *TURKISH.get_or_init(|| sys_locale::get_locale().is_some_and(|l| l.to_ascii_lowercase().starts_with("tr")))
-}
-
 fn ensure_category_dirs(cfg: &Config) {
     if cfg.category_folders {
         for dir in FOLDER_CATEGORIES.iter().filter_map(|c| category_folder(c)) {
@@ -1514,7 +1523,7 @@ fn ensure_category_dirs(cfg: &Config) {
 }
 
 fn category_folder(category: &str) -> Option<&'static str> {
-    let tr = turkish_system();
+    let tr = crate::lang::system_turkish();
     Some(match category {
         "video" => {
             if tr {

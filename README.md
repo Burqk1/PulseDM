@@ -17,7 +17,7 @@ Multi-connection downloads that resume, a browser extension, video sites (YouTub
 
 </div>
 
-> 🇹🇷 **Türkçe:** Pulse DM, Windows için hızlı, ücretsiz ve açık kaynaklı bir indirme yöneticisidir. Dosyaları aynı anda 8–16 bağlantıyla indirir, kopan indirmeleri kaldığı yerden sürdürür, tarayıcı eklentisiyle indirmeleri otomatik yakalar ve YouTube dahil 1000'den fazla video sitesinden indirebilir. Arayüz Türkçedir; motor Rust ile yazılmıştır ve kurulum dosyası 3 MB'tan küçüktür. Geliştirme aşamasındadır.
+> 🇹🇷 **Türkçe:** Pulse DM, Windows için hızlı, ücretsiz ve açık kaynaklı bir indirme yöneticisidir. Dosyaları aynı anda 8–16 bağlantıyla indirir, kopan indirmeleri kaldığı yerden sürdürür, tarayıcı eklentisiyle indirmeleri otomatik yakalar ve YouTube dahil 1000'den fazla video sitesinden indirebilir. Arayüz Türkçe ve İngilizcedir; motor Rust ile yazılmıştır ve kurulum dosyası 3 MB'tan küçüktür. Geliştirme aşamasındadır.
 
 ---
 
@@ -30,6 +30,7 @@ Multi-connection downloads that resume, a browser extension, video sites (YouTub
 - [Installation](#installation)
 - [Browser extension](#browser-extension)
 - [Building from source](#building-from-source)
+- [Releasing a new version](#releasing-a-new-version)
 - [Project structure](#project-structure)
 - [Where Pulse DM keeps its files](#where-pulse-dm-keeps-its-files)
 - [Roadmap](#roadmap)
@@ -88,12 +89,14 @@ YouTube, 720p video (153 MB), video and audio merged into MP4: **5.7 s (≈57 MB
 - Queues with their own concurrency limit, and a **scheduler** that starts or stops a queue at set times on chosen weekdays.
 - Shut down or sleep the PC when all downloads finish (with a 60-second cancel window).
 - Windows notifications, optionally a "download complete" dialog, and an option to keep the server's file date.
+- **Automatic updates**: checks GitHub Releases at start-up and every 12 hours, then updates with one click. Every update is signed and verified before it is installed.
 
 ### Interface
 
 - IDM / AB DM-style layout: categories sidebar, sortable columns, a separate compact window for adding a download and one for each download's progress.
 - Starts with Windows straight into the tray; downloads from the browser show only a small confirmation window, never the main window.
-- Dark, light or system theme, UI scaling, compact layout, Turkish interface.
+- Dark, light or system theme, UI scaling, compact layout.
+- English and Turkish interface. It follows the Windows display language by default and can be switched in *Settings → Appearance*. The browser extension follows the browser's language.
 
 <p align="center">
   <img src="docs/images/add-download.png" width="400" alt="Add download window" />
@@ -188,6 +191,28 @@ cargo run --release -p pulse-engine --example bench -- http://speedtest.tele2.ne
 cargo run --release -p pulse-engine --example media -- "<video page url>" h720 .\out
 ```
 
+## Releasing a new version
+
+Releases are built by GitHub Actions ([`.github/workflows/release.yml`](.github/workflows/release.yml)). Installed copies of Pulse DM pick them up through the updater.
+
+**One-time setup:** under *Settings → Secrets and variables → Actions*, add two repository secrets:
+
+| Secret | Value |
+|---|---|
+| `TAURI_SIGNING_PRIVATE_KEY` | contents of `keys/updater.key` |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | contents of `keys/updater.password` |
+
+The matching public key is in `src-tauri/tauri.conf.json`. Keep the private key safe and out of git: if you lose it, existing installs can no longer verify (and so cannot install) new updates.
+
+**Each release:**
+
+```powershell
+npm run release -- 0.2.0   # bumps all version numbers, commits, tags v0.2.0
+git push --follow-tags     # GitHub builds the installer and publishes the release
+```
+
+The workflow runs the tests, builds the NSIS installer, signs the update bundle and uploads `latest.json`. Running copies see the new version within 12 hours, or straight away from *Help → Check for updates*.
+
 ## Project structure
 
 ```
@@ -210,9 +235,11 @@ PulseDM/
 │   ├── routes/+page.svelte  # Main window
 │   ├── routes/add/          # "Add download" window
 │   ├── routes/progress/     # Progress / download-complete window
-│   └── lib/                 # API bindings, icons, preferences, window sizing
+│   └── lib/                 # API bindings, icons, preferences, translations
 ├── extension/               # Chromium extension (Manifest V3)
 ├── scripts/build-host.mjs   # Builds the bridge for the installer
+├── scripts/release.mjs      # Bumps the version and tags a release
+├── .github/workflows/       # Builds and publishes releases from tags
 └── docs/images/             # Screenshots
 ```
 
@@ -233,12 +260,13 @@ PulseDM/
 - [x] Browser extension for Chromium browsers, with on-video download buttons
 - [x] Video sites through yt-dlp, HLS with AES-128, MP3 audio
 - [x] Installer, autostart in the tray
+- [x] Automatic updates (signed, from GitHub Releases)
 - [ ] Code-signed installer
-- [ ] Automatic updates
 - [ ] Chrome Web Store / Edge Add-ons listing (one-click extension install)
 - [ ] Firefox extension
 - [ ] BitTorrent and magnet links
-- [ ] English interface (and more languages)
+- [x] English and Turkish interface
+- [ ] More languages
 - [ ] macOS and Linux builds
 
 ## Responsible use
@@ -259,6 +287,8 @@ npm run check
 ```
 
 Please open an issue first for larger changes, so we can agree on the approach.
+
+**Translations.** Interface text is written in English inside `t("…")` calls. Each language is a dictionary keyed by that English text: see [`src/lib/locales/tr.ts`](src/lib/locales/tr.ts). To add a language, copy that file, translate the values and register it in [`src/lib/i18n.svelte.ts`](src/lib/i18n.svelte.ts). The extension's strings are in [`extension/_locales/`](extension/_locales/), and the few messages produced by Rust (tray menu, notifications, errors) use `l("English", "Türkçe")` and `text!` in the engine.
 
 ## License and credits
 

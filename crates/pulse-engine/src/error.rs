@@ -1,41 +1,94 @@
+use std::fmt;
 use std::time::Duration;
 
-use thiserror::Error;
+use crate::lang::english;
 
-#[derive(Debug, Error)]
+#[derive(Debug)]
 pub enum EngineError {
-    #[error("Ağ hatası: {0}")]
     Http(String),
-    #[error("Bağlantı kurulamadı: {0}")]
     ConnectFailed(String),
-    #[error("Disk hatası: {0}")]
-    Io(#[from] std::io::Error),
-    #[error("Sunucu beklenmeyen yanıt verdi: {0}")]
+    Io(std::io::Error),
     BadResponse(String),
-    #[error("Sunucu çok fazla istek aldığını bildirdi (HTTP {status})")]
     Throttled { status: u16, retry_after: Option<Duration> },
-    #[error(
-        "Sunucu dosyayı vermedi (HTTP {0}). Link geçersiz ya da süresi dolmuş olabilir; bağlantıyı yenileyip sürdürün"
-    )]
     LinkDead(u16),
-    #[error(
-        "Bağlantı dosya yerine bir web sayfası döndürdü. Linkin süresi dolmuş ya da giriş gerekiyor olabilir; bağlantıyı yenileyip sürdürün"
-    )]
     WebPage,
-    #[error("Dosya sunucuda değişmiş, baştan indirilmesi gerekiyor")]
     Changed,
-    #[error("Yeni bağlantı aynı dosyayı göstermiyor: {0}")]
     UrlMismatch(String),
-    #[error("Diskte yeterli alan yok: {need} gerekli, {free} boş")]
     NoSpace { need: String, free: String },
-    #[error("Geçersiz bağlantı: {0}")]
     InvalidUrl(String),
-    #[error("Bu işlem için önce indirmeyi duraklatın")]
     Busy,
-    #[error("İndirme bulunamadı")]
     NotFound,
-    #[error("İptal edildi")]
     Cancelled,
+}
+
+macro_rules! say {
+    ($f:expr, $en:literal, $tr:literal) => {
+        if english() { write!($f, $en) } else { write!($f, $tr) }
+    };
+}
+
+impl fmt::Display for EngineError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Http(e) => say!(f, "Network error: {e}", "Ağ hatası: {e}"),
+            Self::ConnectFailed(e) => say!(f, "Could not connect: {e}", "Bağlantı kurulamadı: {e}"),
+            Self::Io(e) => say!(f, "Disk error: {e}", "Disk hatası: {e}"),
+            Self::BadResponse(e) => say!(f, "Unexpected server response: {e}", "Sunucu beklenmeyen yanıt verdi: {e}"),
+            Self::Throttled { status, .. } => say!(
+                f,
+                "The server says it is getting too many requests (HTTP {status})",
+                "Sunucu çok fazla istek aldığını bildirdi (HTTP {status})"
+            ),
+            Self::LinkDead(status) => say!(
+                f,
+                "The server refused the file (HTTP {status}). The link may be invalid or expired; refresh the link and resume",
+                "Sunucu dosyayı vermedi (HTTP {status}). Link geçersiz ya da süresi dolmuş olabilir; bağlantıyı yenileyip sürdürün"
+            ),
+            Self::WebPage => say!(
+                f,
+                "The link returned a web page instead of the file. It may have expired or need a sign-in; refresh the link and resume",
+                "Bağlantı dosya yerine bir web sayfası döndürdü. Linkin süresi dolmuş ya da giriş gerekiyor olabilir; bağlantıyı yenileyip sürdürün"
+            ),
+            Self::Changed => say!(
+                f,
+                "The file changed on the server and has to be downloaded again",
+                "Dosya sunucuda değişmiş, baştan indirilmesi gerekiyor"
+            ),
+            Self::UrlMismatch(e) => {
+                say!(
+                    f,
+                    "The new link does not point to the same file: {e}",
+                    "Yeni bağlantı aynı dosyayı göstermiyor: {e}"
+                )
+            }
+            Self::NoSpace { need, free } => {
+                say!(
+                    f,
+                    "Not enough disk space: {need} needed, {free} free",
+                    "Diskte yeterli alan yok: {need} gerekli, {free} boş"
+                )
+            }
+            Self::InvalidUrl(e) => say!(f, "Invalid link: {e}", "Geçersiz bağlantı: {e}"),
+            Self::Busy => say!(f, "Pause the download first", "Bu işlem için önce indirmeyi duraklatın"),
+            Self::NotFound => say!(f, "Download not found", "İndirme bulunamadı"),
+            Self::Cancelled => say!(f, "Cancelled", "İptal edildi"),
+        }
+    }
+}
+
+impl std::error::Error for EngineError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Io(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
+impl From<std::io::Error> for EngineError {
+    fn from(e: std::io::Error) -> Self {
+        Self::Io(e)
+    }
 }
 
 impl EngineError {

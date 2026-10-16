@@ -8,6 +8,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex as AsyncMutex;
 
 use crate::error::{EngineError, Result};
+use crate::lang::text;
 
 const YTDLP_URL: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
 const FFMPEG_URL: &str =
@@ -80,7 +81,13 @@ impl Tools {
         tokio::fs::create_dir_all(&self.dir).await?;
         let resp = self.client.get(url).send().await?;
         if !resp.status().is_success() {
-            return Err(EngineError::BadResponse(format!("{name} indirilemedi: HTTP {}", resp.status().as_u16())));
+            {
+                let status = resp.status().as_u16();
+                return Err(EngineError::BadResponse(text!(
+                    "could not download {name}: HTTP {status}",
+                    "{name} indirilemedi: HTTP {status}"
+                )));
+            }
         }
         let total = resp.content_length();
         let tmp = dest.with_extension("download");
@@ -130,7 +137,9 @@ fn find_in_path(exe: &str) -> Option<PathBuf> {
 async fn extract_matching(zip: &Path, dest: &Path, wanted: impl Fn(&str) -> bool + Send + 'static) -> Result<()> {
     let (zip, dest) = (zip.to_path_buf(), dest.to_path_buf());
     tokio::task::spawn_blocking(move || -> Result<()> {
-        let bad = |e: zip::result::ZipError| EngineError::BadResponse(format!("arşiv açılamadı: {e}"));
+        let bad = |e: zip::result::ZipError| {
+            EngineError::BadResponse(text!("could not open the archive: {e}", "arşiv açılamadı: {e}"))
+        };
         let mut archive = zip::ZipArchive::new(std::fs::File::open(&zip)?).map_err(bad)?;
         std::fs::create_dir_all(&dest)?;
         for i in 0..archive.len() {

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="tr">
+<html>
   <head>
     <meta charset="utf-8" />
     <title>Pulse DM</title>
@@ -13,22 +13,22 @@
     </header>
 
     <label class="row toggle">
-      <span>İndirmeleri yakala</span>
+      <span data-i18n="captureDownloads"></span>
       <input type="checkbox" id="enabled" />
     </label>
-    <p class="muted hint">Videoların üzerine gelince çıkan <b>Pulse DM ile indir</b> butonunu kullan.</p>
+    <p class="muted hint" data-i18n-html="videoHint"></p>
 
-    <button id="bypass" class="secondary">Sonraki indirmeyi tarayıcıya bırak</button>
+    <button id="bypass" class="secondary" data-i18n="bypass"></button>
 
     <details>
-      <summary>Ayarlar</summary>
-      <label>Yakalanacak uzantılar <span class="muted">(boş = hepsi)</span>
+      <summary data-i18n="settings"></summary>
+      <label><span data-i18n="extensionsToCapture"></span> <span class="muted" data-i18n="emptyAll"></span>
         <textarea id="extensions" rows="3"></textarea>
       </label>
-      <label>En küçük boyut (MB)
+      <label><span data-i18n="minSize"></span>
         <input type="number" id="minSizeMb" min="0" step="1" />
       </label>
-      <button id="save">Kaydet</button>
+      <button id="save" data-i18n="save"></button>
     </details>
 
     <script type="module" src="popup.js"></script>

@@ -1,0 +1,23 @@
+{
+  "extDescription": { "message": "Sends downloads to Pulse DM: fast multi-connection downloads, resume and video capture." },
+  "downloadWithPulse": { "message": "Download with Pulse DM" },
+  "downloadThisVideo": { "message": "Download this video with Pulse DM" },
+  "hideForVideo": { "message": "Hide for this video" },
+  "sending": { "message": "Sending…" },
+  "extensionReloaded": { "message": "Extension reloaded, refresh the page" },
+  "sent": { "message": "Sent to Pulse DM ✓" },
+  "unreachable": { "message": "Could not reach Pulse DM" },
+  "noReply": { "message": "Pulse DM did not respond" },
+  "connected": { "message": "Connected" },
+  "appNotFound": { "message": "App not found" },
+  "captureDownloads": { "message": "Capture downloads" },
+  "videoHint": { "message": "Use the <b>Download with Pulse DM</b> button that appears when you hover over a video." },
+  "bypass": { "message": "Let the browser handle the next download" },
+  "bypassed": { "message": "The next download stays in the browser (1 min)" },
+  "settings": { "message": "Settings" },
+  "extensionsToCapture": { "message": "Extensions to capture" },
+  "emptyAll": { "message": "(empty = all)" },
+  "minSize": { "message": "Minimum size (MB)" },
+  "save": { "message": "Save" },
+  "saved": { "message": "Saved ✓" }
+}

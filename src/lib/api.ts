@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { language } from "./i18n.svelte";
 
 export type Status = "queued" | "connecting" | "downloading" | "paused" | "completed" | "failed" | "processing";
 export type Category = "video" | "audio" | "archive" | "program" | "document" | "image" | "other";
@@ -138,6 +139,11 @@ export type EngineEvent =
   | { type: "config"; data: Config }
   | { type: "tool"; data: ToolProgress };
 
+export interface UpdateInfo {
+  version: string;
+  notes: string | null;
+}
+
 export const api = {
   list: () => invoke<Download[]>("list_downloads"),
   add: (request: AddRequest) => invoke<Download>("add_download", { request }),
@@ -170,6 +176,9 @@ export const api = {
   openAddWindow: (draft: Partial<AddDraft> = {}) =>
     invoke<void>("open_add_window", { draft: { url: "", headers: [], file_name: null, media: false, ...draft } }),
   openProgressWindow: (id: string) => invoke<void>("open_progress_window", { id }),
+  checkForUpdates: () => invoke<UpdateInfo | null>("check_for_updates"),
+  pendingUpdate: () => invoke<UpdateInfo | null>("pending_update"),
+  installUpdate: () => invoke<void>("install_update"),
   onEvent: (cb: (e: EngineEvent) => void): Promise<UnlistenFn> => listen<EngineEvent>("engine", (e) => cb(e.payload)),
   on: <T>(name: string, cb: (payload: T) => void): Promise<UnlistenFn> => listen<T>(name, (e) => cb(e.payload)),
 };
@@ -193,12 +202,13 @@ export function formatSpeed(bps: number): string {
 
 export function formatEta(secs: number | null): string {
   if (secs == null) return "";
-  if (secs < 60) return `${secs} sn`;
+  const [s, mi, hr, d] = language() === "tr" ? [" sn", " dk", " sa", " gün"] : ["s", "m", "h", "d"];
+  if (secs < 60) return `${secs}${s}`;
   const m = Math.floor(secs / 60);
-  if (m < 60) return `${m} dk ${secs % 60} sn`;
+  if (m < 60) return `${m}${mi} ${secs % 60}${s}`;
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h} sa ${m % 60} dk`;
-  return `${Math.floor(h / 24)} gün ${h % 24} sa`;
+  if (h < 24) return `${h}${hr} ${m % 60}${mi}`;
+  return `${Math.floor(h / 24)}${d} ${h % 24}${hr}`;
 }
 
 export function extractUrls(text: string): string[] {

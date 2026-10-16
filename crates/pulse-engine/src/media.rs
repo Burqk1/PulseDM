@@ -5,6 +5,7 @@ use serde_json::Value;
 
 use crate::error::{EngineError, Result};
 use crate::hls::HlsState;
+use crate::lang::text;
 use crate::segment::SegmentState;
 use crate::tools::hidden;
 
@@ -105,12 +106,20 @@ pub(crate) async fn extract(ytdlp: &Path, js_runtime: &str, url: &str, headers: 
             .lines()
             .rev()
             .find(|l| l.contains("ERROR"))
-            .unwrap_or("bilinmeyen hata")
+            .unwrap_or(if crate::lang::english() { "unknown error" } else { "bilinmeyen hata" })
             .trim_start_matches("ERROR:")
             .trim();
-        return Err(EngineError::BadResponse(format!("video çözülemedi: {msg}")));
+        if msg.contains("Unsupported URL") {
+            return Err(EngineError::InvalidUrl(text!(
+                "this page is not a single video. Open the video itself (its own link) and try again",
+                "bu sayfa tek bir video değil. Videonun kendi sayfasını açıp tekrar dene"
+            )));
+        }
+        return Err(EngineError::BadResponse(text!("could not read the video: {msg}", "video çözülemedi: {msg}")));
     }
-    serde_json::from_slice(&out.stdout).map_err(|e| EngineError::BadResponse(format!("yt-dlp çıktısı okunamadı: {e}")))
+    serde_json::from_slice(&out.stdout).map_err(|e| {
+        EngineError::BadResponse(text!("could not read yt-dlp output: {e}", "yt-dlp çıktısı okunamadı: {e}"))
+    })
 }
 
 fn write_cookie_file(url: &str, cookie_header: &str) -> Option<std::path::PathBuf> {
@@ -212,8 +221,11 @@ pub(crate) fn options(v: &Value) -> Vec<MediaOption> {
     let mut out = Vec::new();
     if fmts.iter().any(|f| f.has_video) {
         let label = match heights.first() {
-            Some(h) => format!("En iyi kalite ({})", height_label(*h)),
-            None => "En iyi kalite".into(),
+            Some(h) => {
+                let h = height_label(*h);
+                text!("Best quality ({h})", "En iyi kalite ({h})")
+            }
+            None => text!("Best quality", "En iyi kalite"),
         };
         out.push(MediaOption {
             id: "best".into(),
@@ -236,7 +248,7 @@ pub(crate) fn options(v: &Value) -> Vec<MediaOption> {
     if fmts.iter().any(|f| f.has_audio) {
         out.push(MediaOption {
             id: "audio".into(),
-            label: "Sadece ses (MP3)".into(),
+            label: text!("Audio only (MP3)", "Sadece ses (MP3)"),
             height: None,
             audio_only: true,
             size: size_of("audio"),
@@ -260,7 +272,12 @@ pub(crate) fn select(v: &Value, option: &str) -> Result<Vec<Pick>> {
 }
 
 fn select_from(fmts: &[Fmt], option: &str) -> Result<Vec<Pick>> {
-    let none = || EngineError::BadResponse("bu kalite için indirilebilir akış bulunamadı".into());
+    let none = || {
+        EngineError::BadResponse(text!(
+            "no downloadable stream for this quality",
+            "bu kalite için indirilebilir akış bulunamadı"
+        ))
+    };
     let audio_score = |f: &Fmt, prefer_m4a: bool| {
         let m4a = (prefer_m4a && (f.ext == "m4a" || f.ext == "mp4")) as u8;
         (m4a, (f.abr.max(f.tbr) * 1000.0) as u64)
@@ -341,9 +358,10 @@ pub(crate) async fn mux(ffmpeg_dir: &Path, inputs: &[std::path::PathBuf], output
         let out = cmd.output().await?;
         if !out.status.success() {
             let err = String::from_utf8_lossy(&out.stderr);
-            return Err(EngineError::BadResponse(format!(
-                "ses MP3'e dönüştürülemedi: {}",
-                err.lines().last().unwrap_or("ffmpeg hatası")
+            let err = err.lines().last().unwrap_or("ffmpeg").to_string();
+            return Err(EngineError::BadResponse(text!(
+                "could not convert the audio to MP3: {err}",
+                "ses MP3'e dönüştürülemedi: {err}"
             )));
         }
         return Ok(());
@@ -367,9 +385,10 @@ pub(crate) async fn mux(ffmpeg_dir: &Path, inputs: &[std::path::PathBuf], output
     let out = cmd.output().await?;
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr);
-        return Err(EngineError::BadResponse(format!(
-            "video birleştirilemedi: {}",
-            err.lines().last().unwrap_or("ffmpeg hatası")
+        let err = err.lines().last().unwrap_or("ffmpeg").to_string();
+        return Err(EngineError::BadResponse(text!(
+            "could not merge the video: {err}",
+            "video birleştirilemedi: {err}"
         )));
     }
     Ok(())
@@ -400,7 +419,7 @@ mod tests {
         let opts = options(&youtube_like());
         let ids: Vec<&str> = opts.iter().map(|o| o.id.as_str()).collect();
         assert_eq!(ids, ["best", "h2160", "h1080", "h360", "audio"]);
-        assert_eq!(opts[0].label, "En iyi kalite (2160p (4K))");
+        assert_eq!(opts[0].label, "Best quality (2160p (4K))");
         assert_eq!(opts[2].size, Some(54000), "1080p H.264 + m4a audio");
     }
 

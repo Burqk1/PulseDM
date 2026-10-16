@@ -12,6 +12,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::error::{EngineError, Result};
 use crate::fsutil::write_all_at;
+use crate::lang::text;
 use crate::limiter::RateLimiter;
 use crate::probe::{is_html, parse_content_range_start};
 use crate::segment::{Assignment, SegmentTable};
@@ -208,7 +209,9 @@ pub(crate) async fn run(job: Arc<Job>) -> Result<()> {
     if job.table.is_complete() {
         return Ok(());
     }
-    Err(first_error.unwrap_or_else(|| EngineError::BadResponse("indirme tamamlanamadı".into())))
+    Err(first_error.unwrap_or_else(|| {
+        EngineError::BadResponse(text!("the download could not be finished", "indirme tamamlanamadı"))
+    }))
 }
 
 async fn worker(job: Arc<Job>) -> Result<Exit> {
@@ -298,7 +301,10 @@ async fn fetch(job: &Job, idx: usize, from: u64) -> Result<FetchEnd> {
         }
         let start = resp.headers().get(CONTENT_RANGE).and_then(|v| v.to_str().ok()).and_then(parse_content_range_start);
         if start != Some(from) {
-            return Err(EngineError::BadResponse("sunucu yanlış aralık gönderdi".into()));
+            return Err(EngineError::BadResponse(text!(
+                "the server sent the wrong range",
+                "sunucu yanlış aralık gönderdi"
+            )));
         }
     } else if !status.is_success() {
         return Err(EngineError::BadResponse(format!("HTTP {}", status.as_u16())));
@@ -344,7 +350,7 @@ async fn fetch(job: &Job, idx: usize, from: u64) -> Result<FetchEnd> {
                 return if job.table.remaining(idx) == 0 || job.table.pos(idx) >= request_end {
                     Ok(FetchEnd::Finished)
                 } else {
-                    Err(EngineError::BadResponse("bağlantı erken kapandı".into()))
+                    Err(EngineError::BadResponse(text!("the connection closed early", "bağlantı erken kapandı")))
                 };
             }
         }

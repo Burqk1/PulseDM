@@ -341,7 +341,7 @@ async fn expired_link_is_detected_and_can_be_replaced() {
     let id = add(&engine, &expired);
     let v = wait_for(&engine, id, "failure", finished).await;
     assert_eq!(v.status, Status::Failed);
-    assert!(v.error.unwrap().contains("web sayfası"));
+    assert!(v.error.unwrap().contains("web page"));
 
     let id = add(&engine, &good);
     wait_for(&engine, id, "some progress", |v| v.downloaded > 256 * 1024).await;

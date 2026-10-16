@@ -5,6 +5,7 @@
   import Icon from "$lib/Icon.svelte";
   import TitleBar from "$lib/TitleBar.svelte";
   import { fitWindow } from "$lib/fitWindow";
+  import { queueLabel, t } from "$lib/i18n.svelte";
   import {
     api,
     extractUrls,
@@ -42,13 +43,13 @@
   let autoTimer = 0;
 
   const LABEL: Record<Status, string> = {
-    queued: "Sırada",
-    connecting: "Bağlanıyor",
-    downloading: "İndiriliyor",
-    paused: "Duraklatıldı",
-    completed: "Tamamlandı",
-    failed: "Hata",
-    processing: "İşleniyor",
+    queued: "Queued",
+    connecting: "Connecting",
+    downloading: "Downloading",
+    paused: "Paused",
+    completed: "Completed",
+    failed: "Error",
+    processing: "Processing",
   };
   const ACTIVE: Status[] = ["queued", "connecting", "downloading", "processing"];
 
@@ -59,7 +60,7 @@
     if (d.parts) return d.parts[1] ? (d.parts[0] / d.parts[1]) * 100 : 0;
     return d.size ? Math.min(100, (d.downloaded / d.size) * 100) : 0;
   });
-  const title = $derived(d ? (done ? d.file_name : `%${Math.floor(pct)} ${d.file_name}`) : "Pulse DM");
+  const title = $derived(d ? (done ? d.file_name : `${t("{n}%", { n: Math.floor(pct) })} ${d.file_name}`) : "Pulse DM");
 
   $effect(() => {
     win.setTitle(title);
@@ -80,7 +81,7 @@
 
   async function replaceUrl() {
     const url = extractUrls(newUrl)[0];
-    if (!url) return say("Geçerli bir bağlantı gir", true);
+    if (!url) return say(t("Enter a valid link"), true);
     try {
       await api.setUrl(id, url);
       await api.resume(id);
@@ -178,7 +179,7 @@
   <TitleBar {title} minimize={!done} />
 
   {#if !d}
-    <main use:fitWindow={{ width: 440, max: 600 }}><div class="body"><p class="muted">İndirme bulunamadı.</p></div></main>
+    <main use:fitWindow={{ width: 440, max: 600 }}><div class="body"><p class="muted">{t("Download not found.")}</p></div></main>
   {:else if done}
     <main use:fitWindow={{ width: 440, max: 600 }}>
       <div class="body">
@@ -188,21 +189,21 @@
             <span>{formatBytes(d.size)}</span>
           </div>
           <div class="complete-text">
-            <b class="ok-title"><Icon name="finished" size={17} /> İndirme tamamlandı</b>
+            <b class="ok-title"><Icon name="finished" size={17} /> {t("Download complete")}</b>
             <span class="fname" title={d.file_name}>{d.file_name}</span>
-            {#if autoClose !== null}<span class="muted small">{autoClose} sn sonra kapanacak</span>{/if}
+            {#if autoClose !== null}<span class="muted small">{t("Closes in {n} s", { n: autoClose })}</span>{/if}
           </div>
         </div>
         {#if sumOpen}
           <div class="sum" transition:slide={{ duration: 140 }}>
             <div class="field-row">
-              <input bind:value={sumExpected} placeholder="Beklenen hash (boş = SHA-256 hesapla)" />
-              <button class="btn" disabled={sumBusy} onclick={verify}>{sumBusy ? "Hesaplanıyor…" : "Doğrula"}</button>
+              <input bind:value={sumExpected} placeholder={t("Expected hash (empty = compute SHA-256)")} />
+              <button class="btn" disabled={sumBusy} onclick={verify}>{sumBusy ? t("Computing…") : t("Verify")}</button>
             </div>
             {#if sumResult}
               <code class="wrap">{sumResult.algorithm.toUpperCase()}: {sumResult.actual}</code>
-              {#if sumResult.matches === true}<b class="ok">✓ Eşleşiyor, dosya sağlam</b>
-              {:else if sumResult.matches === false}<b class="bad">✗ Eşleşmiyor, dosya bozuk ya da değiştirilmiş</b>{/if}
+              {#if sumResult.matches === true}<b class="ok">{t("✓ Matches, the file is intact")}</b>
+              {:else if sumResult.matches === false}<b class="bad">{t("✗ Does not match, the file is corrupt or was changed")}</b>{/if}
             {/if}
           </div>
         {/if}
@@ -210,62 +211,62 @@
       </div>
     </main>
     <footer>
-      <button class="btn" onclick={() => run(api.openFile(id))}>Aç</button>
-      <button class="btn" onclick={() => run(api.showInFolder(id))}>Klasörü aç</button>
-      <button class="btn icon" class:active={sumOpen} title="Dosyayı doğrula (MD5 / SHA)" aria-label="Dosyayı doğrula" onclick={() => (sumOpen = !sumOpen)}><Icon name="shield" /></button>
+      <button class="btn" onclick={() => run(api.openFile(id))}>{t("Open")}</button>
+      <button class="btn" onclick={() => run(api.showInFolder(id))}>{t("Open folder")}</button>
+      <button class="btn icon" class:active={sumOpen} title={t("Verify the file (MD5 / SHA)")} aria-label={t("Verify the file")} onclick={() => (sumOpen = !sumOpen)}><Icon name="shield" /></button>
       <span class="spacer"></span>
-      <button class="btn" onclick={() => win.close()}>Kapat</button>
+      <button class="btn" onclick={() => win.close()}>{t("Close")}</button>
     </footer>
   {:else}
     <div class="tabs">
-      <button class:active={tab === "info"} onclick={() => (tab = "info")}><Icon name="list" size={13} /> Bilgi</button>
-      <button class:active={tab === "speed"} onclick={() => (tab = "speed")}><Icon name="speed" size={13} /> Hız</button>
-      <button class:active={tab === "done"} onclick={() => (tab = "done")}><Icon name="finished" size={13} /> Tamamlanınca</button>
+      <button class:active={tab === "info"} onclick={() => (tab = "info")}><Icon name="list" size={13} /> {t("Info")}</button>
+      <button class:active={tab === "speed"} onclick={() => (tab = "speed")}><Icon name="speed" size={13} /> {t("Speed")}</button>
+      <button class:active={tab === "done"} onclick={() => (tab = "done")}><Icon name="finished" size={13} /> {t("When done")}</button>
     </div>
 
     <main use:fitWindow={{ width: 440, max: 640 }}>
       <div class="body">
         {#if tab === "info"}
           <dl class="props">
-            <dt>Ad:</dt><dd class="name" title={d.file_name}>{d.file_name}</dd>
-            <dt>Durum:</dt><dd class="st-{d.status}">{LABEL[d.status]}</dd>
-            <dt>Boyut:</dt><dd>{formatBytes(d.size)}</dd>
-            <dt>İndirilen:</dt><dd>{formatBytes(d.downloaded)} (%{Math.floor(pct)})</dd>
-            <dt>Hız:</dt><dd>{d.status === "downloading" ? formatSpeed(d.speed) : "—"}</dd>
-            <dt>Kalan süre:</dt><dd>{d.status === "downloading" ? formatEta(d.eta_secs) || "—" : "—"}</dd>
-            <dt>Devam desteği:</dt><dd class={d.resumable ? "ok" : "bad"}>{d.resumable ? "Var" : "Yok"}</dd>
-            {#if d.error}<dt>Hata:</dt><dd class="bad wrap">{d.error}</dd>{/if}
+            <dt>{t("Name:")}</dt><dd class="name" title={d.file_name}>{d.file_name}</dd>
+            <dt>{t("Status:")}</dt><dd class="st-{d.status}">{t(LABEL[d.status])}</dd>
+            <dt>{t("Size:")}</dt><dd>{formatBytes(d.size)}</dd>
+            <dt>{t("Downloaded:")}</dt><dd>{formatBytes(d.downloaded)} ({t("{n}%", { n: Math.floor(pct) })})</dd>
+            <dt>{t("Speed:")}</dt><dd>{d.status === "downloading" ? formatSpeed(d.speed) : "—"}</dd>
+            <dt>{t("Time left:")}</dt><dd>{d.status === "downloading" ? formatEta(d.eta_secs) || "—" : "—"}</dd>
+            <dt>{t("Resumable:")}</dt><dd class={d.resumable ? "ok" : "bad"}>{d.resumable ? t("Yes") : t("No")}</dd>
+            {#if d.error}<dt>{t("Error:")}</dt><dd class="bad wrap">{d.error}</dd>{/if}
           </dl>
           {#if d.status === "failed" || d.status === "paused"}
             <div class="field-row">
-              <input bind:value={newUrl} placeholder="Link süresi dolduysa yeni bağlantıyı yapıştır" />
-              <button class="btn" onclick={replaceUrl}>Yenile</button>
+              <input bind:value={newUrl} placeholder={t("If the link expired, paste a new one")} />
+              <button class="btn" onclick={replaceUrl}>{t("Refresh")}</button>
             </div>
           {/if}
         {:else if tab === "speed"}
           <label class="row">
-            <span>Bağlantı sayısı</span>
+            <span>{t("Connections")}</span>
             <select bind:value={optConn}>
-              <option value="">Otomatik ({defaultConnections})</option>
+              <option value="">{t("Automatic ({n})", { n: defaultConnections })}</option>
               {#each [1, 2, 4, 6, 8, 12, 16, 24, 32] as n (n)}<option value={String(n)}>{n}</option>{/each}
             </select>
           </label>
           <label class="row">
-            <span>Hız sınırı (MB/s)</span>
-            <input type="number" min="0" step="0.5" bind:value={optLimitMb} placeholder="0 = sınırsız" />
+            <span>{t("Speed limit (MB/s)")}</span>
+            <input type="number" min="0" step="0.5" bind:value={optLimitMb} placeholder={t("0 = unlimited")} />
           </label>
           <label class="row">
-            <span>Kuyruk</span>
+            <span>{t("Queue")}</span>
             <select value={d.queue} onchange={(e) => run(api.moveToQueue([id], (e.target as HTMLSelectElement).value))}>
-              {#each queues as q (q.id)}<option value={q.id}>{q.name}</option>{/each}
+              {#each queues as q (q.id)}<option value={q.id}>{queueLabel(q)}</option>{/each}
             </select>
           </label>
-          <div><button class="btn" onclick={applySettings}>{saved ? "Uygulandı ✓" : "Uygula"}</button></div>
+          <div><button class="btn" onclick={applySettings}>{saved ? t("Applied ✓") : t("Apply")}</button></div>
         {:else}
-          <label class="check"><input type="checkbox" bind:checked={whenDone.openFile} /> Dosyayı aç</label>
-          <label class="check"><input type="checkbox" bind:checked={whenDone.openFolder} /> Klasörü aç</label>
-          <label class="check"><input type="checkbox" bind:checked={whenDone.closeWindow} /> Bu pencereyi kapat</label>
-          <span class="muted small">Bu indirme bitince yapılır (pencere açıkken).</span>
+          <label class="check"><input type="checkbox" bind:checked={whenDone.openFile} /> {t("Open the file")}</label>
+          <label class="check"><input type="checkbox" bind:checked={whenDone.openFolder} /> {t("Open folder")}</label>
+          <label class="check"><input type="checkbox" bind:checked={whenDone.closeWindow} /> {t("Close this window")}</label>
+          <span class="muted small">{t("Done when this download finishes (while the window is open).")}</span>
         {/if}
 
         <div class="bar"><div class="fill" class:paused={!ACTIVE.includes(d.status)} style="width:{pct}%"></div></div>
@@ -280,11 +281,11 @@
               {/each}
             </div>
             <div class="parts">
-              <div class="prow head"><span>#</span><span>Durum</span><span>İndirilen</span><span>Toplam</span></div>
+              <div class="prow head"><span>#</span><span>{t("Status")}</span><span>{t("Downloaded")}</span><span>{t("Total")}</span></div>
               {#each d.segments as s, i (s.start)}
                 <div class="prow">
                   <span>{i + 1}</span>
-                  <span class="seg-{segState(s)}">{segState(s) === "done" ? "Bitti" : segState(s) === "active" ? "Veri alınıyor" : "Bekliyor"}</span>
+                  <span class="seg-{segState(s)}">{segState(s) === "done" ? t("Done") : segState(s) === "active" ? t("Receiving") : t("Waiting")}</span>
                   <span>{formatBytes(s.pos - s.start)}</span>
                   <span>{s.end > 1e18 ? "?" : formatBytes(s.end - s.start)}</span>
                 </div>
@@ -297,17 +298,17 @@
     </main>
 
     <footer>
-      <button class="btn icon" title="Parça bilgisi" aria-label="Parça bilgisi" disabled={!d.segments.length} onclick={() => (showParts = !showParts)}>
+      <button class="btn icon" title={t("Part details")} aria-label={t("Part details")} disabled={!d.segments.length} onclick={() => (showParts = !showParts)}>
         <span class="chev" class:open={showParts}><Icon name="chevron" size={14} /></span>
       </button>
-      {#if showParts && d.segments.length}<span class="muted small">{d.connections} bağlantı aktif</span>{/if}
+      {#if showParts && d.segments.length}<span class="muted small">{t("{n} connections active", { n: d.connections })}</span>{/if}
       <span class="spacer"></span>
       {#if ACTIVE.includes(d.status)}
-        <button class="btn" onclick={() => run(api.pause(id))}><Icon name="pause" size={14} /> Duraklat</button>
+        <button class="btn" onclick={() => run(api.pause(id))}><Icon name="pause" size={14} /> {t("Pause")}</button>
       {:else}
-        <button class="btn primary" onclick={() => run(api.resume(id))}><Icon name={d.status === "failed" ? "retry" : "play"} size={14} /> {d.status === "failed" ? "Tekrar dene" : "Sürdür"}</button>
+        <button class="btn primary" onclick={() => run(api.resume(id))}><Icon name={d.status === "failed" ? "retry" : "play"} size={14} /> {d.status === "failed" ? t("Try again") : t("Resume")}</button>
       {/if}
-      <button class="btn" onclick={cancel}>İptal</button>
+      <button class="btn" onclick={cancel}>{t("Cancel")}</button>
     </footer>
   {/if}
 </div>

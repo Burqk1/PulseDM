@@ -11,7 +11,7 @@ pub fn file_digest(path: &Path, algorithm: &str) -> Result<String, String> {
         "sha1" => digest::<Sha1>(path),
         "sha256" => digest::<Sha256>(path),
         "sha512" => digest::<Sha512>(path),
-        other => Err(format!("desteklenmeyen algoritma: {other}")),
+        other => Err(format!("{}: {other}", crate::l("unsupported algorithm", "desteklenmeyen algoritma"))),
     }
 }
 

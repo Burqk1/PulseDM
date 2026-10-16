@@ -1,5 +1,6 @@
 <script lang="ts">
   import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { t } from "$lib/i18n.svelte";
 
   let { title, minimize = false }: { title: string; minimize?: boolean } = $props();
   const win = getCurrentWindow();
@@ -13,11 +14,11 @@
   <span class="title" data-tauri-drag-region>{title}</span>
   <div class="win-controls">
     {#if minimize}
-      <button aria-label="Simge durumuna küçült" onclick={() => win.minimize()}>
+      <button aria-label={t("Minimize")} onclick={() => win.minimize()}>
         <svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 5h10" stroke="currentColor" /></svg>
       </button>
     {/if}
-    <button class="close" aria-label="Kapat" onclick={() => win.close()}>
+    <button class="close" aria-label={t("Close")} onclick={() => win.close()}>
       <svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10" stroke="currentColor" /></svg>
     </button>
   </div>

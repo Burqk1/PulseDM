@@ -1,0 +1,23 @@
+{
+  "extDescription": { "message": "İndirmeleri Pulse DM'e aktarır: çok bağlantılı hızlı indirme, devam ettirme, video yakalama." },
+  "downloadWithPulse": { "message": "Pulse DM ile indir" },
+  "downloadThisVideo": { "message": "Bu videoyu Pulse DM ile indir" },
+  "hideForVideo": { "message": "Bu video için gizle" },
+  "sending": { "message": "Gönderiliyor…" },
+  "extensionReloaded": { "message": "Eklenti yeniden yüklendi, sayfayı yenile" },
+  "sent": { "message": "Pulse DM'e gönderildi ✓" },
+  "unreachable": { "message": "Pulse DM'e ulaşılamadı" },
+  "noReply": { "message": "Pulse DM yanıt vermedi" },
+  "connected": { "message": "Bağlı" },
+  "appNotFound": { "message": "Uygulama bulunamadı" },
+  "captureDownloads": { "message": "İndirmeleri yakala" },
+  "videoHint": { "message": "Videoların üzerine gelince çıkan <b>Pulse DM ile indir</b> butonunu kullan." },
+  "bypass": { "message": "Sonraki indirmeyi tarayıcıya bırak" },
+  "bypassed": { "message": "Sonraki indirme tarayıcıda kalacak (1 dk)" },
+  "settings": { "message": "Ayarlar" },
+  "extensionsToCapture": { "message": "Yakalanacak uzantılar" },
+  "emptyAll": { "message": "(boş = hepsi)" },
+  "minSize": { "message": "En küçük boyut (MB)" },
+  "save": { "message": "Kaydet" },
+  "saved": { "message": "Kaydedildi ✓" }
+}

@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { setLanguage, type LanguagePref } from "./i18n.svelte";
 
 export interface Prefs {
   theme: "system" | "dark" | "light";
@@ -9,6 +10,8 @@ export interface Prefs {
   progress_window: boolean;
   completion_window: boolean;
   notifications: boolean;
+  auto_update: boolean;
+  language: LanguagePref;
 }
 
 export const getPrefs = () => invoke<Prefs>("get_prefs");
@@ -19,6 +22,7 @@ let current: Prefs | null = null;
 
 export function applyPrefs(p: Prefs) {
   current = p;
+  setLanguage(p.language);
   const root = document.documentElement;
   const theme = p.theme === "system" ? (darkQuery?.matches ? "dark" : "light") : p.theme;
   root.dataset.theme = theme;

@@ -15,6 +15,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::download::{JobControl, check_status};
 use crate::error::{EngineError, Result};
+use crate::lang::text;
 use crate::limiter::RateLimiter;
 use crate::segment::SegmentTable;
 
@@ -76,14 +77,14 @@ pub fn best_variant(text: &str, base: &Url) -> Option<String> {
 }
 
 pub fn parse_media(text: &str, base: &Url) -> Result<MediaPlaylist> {
-    let bad = |m: &str| EngineError::BadResponse(m.to_string());
+    let bad = EngineError::BadResponse;
     if !text.trim_start().starts_with("#EXTM3U") {
-        return Err(bad("geçerli bir HLS listesi değil"));
+        return Err(bad(text!("not a valid HLS playlist", "geçerli bir HLS listesi değil")));
     }
     if !text.contains("#EXT-X-ENDLIST") {
-        return Err(bad("canlı yayınlar henüz desteklenmiyor"));
+        return Err(bad(text!("live streams are not supported yet", "canlı yayınlar henüz desteklenmiyor")));
     }
-    let join = |u: &str| base.join(u).map(|u| u.to_string()).map_err(|e| bad(&e.to_string()));
+    let join = |u: &str| base.join(u).map(|u| u.to_string()).map_err(|e| bad(e.to_string()));
 
     let mut seq = 0u64;
     let mut key: Option<(String, Option<[u8; 16]>)> = None;
@@ -99,13 +100,20 @@ pub fn parse_media(text: &str, base: &Url) -> Result<MediaPlaylist> {
             key = match attr(attrs, "METHOD").as_deref() {
                 Some("NONE") | None => None,
                 Some("AES-128") => {
-                    let uri = attr(attrs, "URI").ok_or_else(|| bad("şifre anahtarı adresi yok"))?;
+                    let uri = attr(attrs, "URI")
+                        .ok_or_else(|| bad(text!("the encryption key has no address", "şifre anahtarı adresi yok")))?;
                     Some((join(&uri)?, attr(attrs, "IV").and_then(|iv| parse_iv(&iv))))
                 }
-                Some(_) => return Err(bad("bu video DRM (SAMPLE-AES) ile korunuyor, indirilemez")),
+                Some(_) => {
+                    return Err(bad(text!(
+                        "this video is DRM protected (SAMPLE-AES) and cannot be downloaded",
+                        "bu video DRM (SAMPLE-AES) ile korunuyor, indirilemez"
+                    )));
+                }
             };
         } else if let Some(attrs) = line.strip_prefix("#EXT-X-MAP:") {
-            let uri = attr(attrs, "URI").ok_or_else(|| bad("EXT-X-MAP adresi yok"))?;
+            let uri =
+                attr(attrs, "URI").ok_or_else(|| bad(text!("EXT-X-MAP has no address", "EXT-X-MAP adresi yok")))?;
             let range = attr(attrs, "BYTERANGE").and_then(|r| parse_byterange(&r, 0));
             init = Some(HlsSegment { uri: join(&uri)?, key: None, range });
         } else if let Some(v) = line.strip_prefix("#EXT-X-BYTERANGE:") {
@@ -123,7 +131,7 @@ pub fn parse_media(text: &str, base: &Url) -> Result<MediaPlaylist> {
         }
     }
     if segments.is_empty() {
-        return Err(bad("HLS listesinde parça yok"));
+        return Err(bad(text!("the HLS playlist has no segments", "HLS listesinde parça yok")));
     }
     Ok(MediaPlaylist { init, segments })
 }
@@ -188,8 +196,8 @@ pub(crate) async fn load(client: &Client, url: &str, headers: &HeaderMap) -> Res
     let text = fetch_text(client, url, headers).await?;
     let base = Url::parse(url).map_err(|e| EngineError::InvalidUrl(e.to_string()))?;
     if is_master(&text) {
-        let variant =
-            best_variant(&text, &base).ok_or_else(|| EngineError::BadResponse("video kalitesi bulunamadı".into()))?;
+        let variant = best_variant(&text, &base)
+            .ok_or_else(|| EngineError::BadResponse(text!("no video quality found", "video kalitesi bulunamadı")))?;
         let text = fetch_text(client, &variant, headers).await?;
         parse_media(&text, &Url::parse(&variant).map_err(|e| EngineError::InvalidUrl(e.to_string()))?)
     } else {
@@ -283,7 +291,7 @@ pub(crate) async fn run(job: Arc<HlsJob>, playlist: MediaPlaylist) -> Result<()>
     match first_error {
         Some(e) => Err(e),
         None if job.state.lock().unwrap().written == total => Ok(()),
-        None => Err(EngineError::BadResponse("video tamamlanamadı".into())),
+        None => Err(EngineError::BadResponse(text!("the video could not be finished", "video tamamlanamadı"))),
     }
 }
 
@@ -357,18 +365,23 @@ async fn fetch_segment(
                         let resp = job.client.get(&key.uri).headers(job.headers.clone()).send().await?;
                         check_status(resp.status(), resp.headers())?;
                         let bytes = resp.bytes().await?;
-                        let k: [u8; 16] = bytes
-                            .as_ref()
-                            .try_into()
-                            .map_err(|_| EngineError::BadResponse("şifre anahtarı 16 bayt değil".into()))?;
+                        let k: [u8; 16] = bytes.as_ref().try_into().map_err(|_| {
+                            EngineError::BadResponse(text!(
+                                "the encryption key is not 16 bytes",
+                                "şifre anahtarı 16 bayt değil"
+                            ))
+                        })?;
                         cache.insert(key.uri.clone(), k);
                         k
                     }
                 }
             };
-            Aes128CbcDec::new(&key_bytes.into(), &key.iv.into())
-                .decrypt_padded_vec_mut::<Pkcs7>(&data)
-                .map_err(|_| EngineError::BadResponse("video parçası çözülemedi (yanlış anahtar)".into()))
+            Aes128CbcDec::new(&key_bytes.into(), &key.iv.into()).decrypt_padded_vec_mut::<Pkcs7>(&data).map_err(|_| {
+                EngineError::BadResponse(text!(
+                    "could not decrypt a video segment (wrong key)",
+                    "video parçası çözülemedi (yanlış anahtar)"
+                ))
+            })
         }
     }
 }
@@ -417,7 +430,7 @@ mod tests {
         let drm = "#EXTM3U\n#EXT-X-KEY:METHOD=SAMPLE-AES,URI=\"skd://x\"\n#EXTINF:4,\na.ts\n#EXT-X-ENDLIST\n";
         assert!(parse_media(drm, &base()).unwrap_err().to_string().contains("DRM"));
         let live = "#EXTM3U\n#EXTINF:4,\na.ts\n";
-        assert!(parse_media(live, &base()).unwrap_err().to_string().contains("canlı"));
+        assert!(parse_media(live, &base()).unwrap_err().to_string().contains("live"));
     }
 
     #[test]

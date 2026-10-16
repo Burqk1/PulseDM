@@ -30,7 +30,7 @@ async function sendToPulse({ url, filename, referrer, media = false }) {
     userAgent: navigator.userAgent,
     media,
   });
-  if (!reply?.ok) throw new Error(reply?.error || "Pulse DM yanıt vermedi");
+  if (!reply?.ok) throw new Error(reply?.error || chrome.i18n.getMessage("noReply"));
 }
 
 async function ping() {
@@ -73,7 +73,7 @@ chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
       await chrome.downloads.erase({ id: item.id });
       await flashBadge("✓", "#2563eb");
     } catch (e) {
-      console.warn("Pulse DM'e aktarılamadı, tarayıcı indiriyor:", e);
+      console.warn("Could not hand off to Pulse DM, the browser downloads it:", e);
     }
   })().finally(() => {
     try {
@@ -85,8 +85,8 @@ chrome.downloads.onDeterminingFilename.addListener((item, suggest) => {
 });
 
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({ id: "pulse-link", title: "Pulse DM ile indir", contexts: ["link"] });
-  chrome.contextMenus.create({ id: "pulse-media", title: "Pulse DM ile indir", contexts: ["video", "audio", "image"] });
+  chrome.contextMenus.create({ id: "pulse-link", title: chrome.i18n.getMessage("downloadWithPulse"), contexts: ["link"] });
+  chrome.contextMenus.create({ id: "pulse-media", title: chrome.i18n.getMessage("downloadWithPulse"), contexts: ["video", "audio", "image"] });
 });
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
@@ -142,6 +142,8 @@ chrome.tabs.onRemoved.addListener((tabId) => chrome.storage.session.remove(`medi
 
 async function downloadVideo({ src, page, permalink, title }, tab) {
   const pageUrl = permalink || page;
+  const feedOnly = !permalink && /(^|\.)tiktok\.com$/.test(new URL(page).hostname) && !/\/video\/\d+/.test(page);
+  if (feedOnly && /^https?:/i.test(src)) return sendToPulse({ url: src, referrer: page, filename: `${safeName(title)}.mp4` });
   if (isVideoSite(pageUrl)) return sendToPulse({ url: pageUrl, referrer: tab?.url, media: true });
   if (/^https?:/i.test(src) && !/\.m3u8(\?|$)/i.test(src)) return sendToPulse({ url: src, referrer: page });
   const key = `media_${tab?.id}`;

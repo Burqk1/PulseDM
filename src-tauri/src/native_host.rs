@@ -15,7 +15,7 @@ pub fn register(data_dir: &Path) -> Result<(), String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let host = exe.with_file_name(if cfg!(windows) { "pulsedm-host.exe" } else { "pulsedm-host" });
     if !host.exists() {
-        return Err(format!("{} bulunamadı", host.display()));
+        return Err(format!("{} {}", crate::l("not found:", "bulunamadı:"), host.display()));
     }
 
     let manifest = serde_json::json!({

@@ -19,7 +19,12 @@ impl Default for QueueConfig {
 
 impl QueueConfig {
     pub fn main() -> Self {
-        Self { id: crate::engine::MAIN_QUEUE.into(), name: "Ana kuyruk".into(), running: true, ..Self::default() }
+        Self {
+            id: crate::engine::MAIN_QUEUE.into(),
+            name: if crate::lang::english() { "Main queue" } else { "Ana kuyruk" }.into(),
+            running: true,
+            ..Self::default()
+        }
     }
 }
 

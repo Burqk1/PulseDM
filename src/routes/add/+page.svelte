@@ -7,6 +7,7 @@
   import TitleBar from "$lib/TitleBar.svelte";
   import { fitWindow } from "$lib/fitWindow";
   import { getPrefs } from "$lib/prefs";
+  import { queueLabel, t } from "$lib/i18n.svelte";
   import {
     api,
     extractUrls,
@@ -48,7 +49,7 @@
   let mediaRequested = $state(false);
   const isMedia = $derived(!!single && (mediaRequested || isVideoSite(single)));
 
-  const toolNames: Record<string, string> = { "yt-dlp": "video çözücü", ffmpeg: "video birleştirici", Deno: "JavaScript motoru" };
+  const toolNames: Record<string, string> = { "yt-dlp": "video reader", ffmpeg: "video merger", Deno: "JavaScript engine" };
 
   async function inspect() {
     const url = single;
@@ -167,7 +168,7 @@
 <svelte:window onkeydown={onKey} />
 
 <div class="window">
-  <TitleBar title={isMedia ? "Video indir" : "İndirme ekle"} />
+  <TitleBar title={isMedia ? t("Download video") : t("Add download")} />
 
   <main use:fitWindow={{ width: 600, max: 720 }}>
     <div class="body">
@@ -176,10 +177,10 @@
         rows={urls.length > 1 ? 3 : 1}
         bind:value={urlText}
         oninput={onUrlInput}
-        placeholder="https://…  (birden fazla bağlantı için her satıra bir tane)"
+        placeholder={t("https://…  (one link per line for several)")}
         spellcheck="false"
       ></textarea>
-      <button class="icon-btn boxed" title="Panodan yapıştır" aria-label="Panodan yapıştır" onclick={paste}><Icon name="clipboard" /></button>
+      <button class="icon-btn boxed" title={t("Paste from clipboard")} aria-label={t("Paste from clipboard")} onclick={paste}><Icon name="clipboard" /></button>
     </div>
 
     {#if media}
@@ -190,7 +191,7 @@
           <span class="muted">{[media.uploader, formatDuration(media.duration), media.site].filter(Boolean).join(" · ")}</span>
         </div>
       </div>
-      <div class="qualities" role="radiogroup" aria-label="Kalite">
+      <div class="qualities" role="radiogroup" aria-label={t("Quality")}>
         {#each media.options as o (o.id)}
           <label class="quality" class:on={option === o.id}>
             <input type="radio" name="quality" value={o.id} bind:group={option} />
@@ -202,40 +203,40 @@
     {/if}
 
     <div class="field-row">
-      <input bind:value={dir} oninput={() => (dirEdited = true)} placeholder="Kaydedilecek klasör" />
-      <button class="icon-btn boxed" title="Klasör seç" aria-label="Klasör seç" onclick={pickDir}><Icon name="folder" /></button>
+      <input bind:value={dir} oninput={() => (dirEdited = true)} placeholder={t("Save to folder")} />
+      <button class="icon-btn boxed" title={t("Choose folder")} aria-label={t("Choose folder")} onclick={pickDir}><Icon name="folder" /></button>
     </div>
 
     {#if !media}
       <div class="field-row">
         {#if urls.length > 1}
-          <span class="muted grow">{urls.length} bağlantı eklenecek</span>
+          <span class="muted grow">{t("{n} links will be added", { n: urls.length })}</span>
         {:else}
-          <input class="grow" bind:value={name} oninput={() => (nameEdited = true)} placeholder="Dosya adı" />
+          <input class="grow" bind:value={name} oninput={() => (nameEdited = true)} placeholder={t("File name")} />
         {/if}
-        <div class="size-box" title={info?.resumable ? "Kaldığı yerden devam edebilir" : ""}>
+        <div class="size-box" title={info?.resumable ? t("Can resume where it left off") : ""}>
           {#if loading}
             <span class="spinner"></span>
           {:else if info}
             <b>{formatBytes(info.size)}</b>
-            <span class={info.resumable ? "ok" : "warn"}>{info.resumable ? "✓ devam destekli" : "devam desteksiz"}</span>
+            <span class={info.resumable ? "ok" : "warn"}>{info.resumable ? t("✓ resumable") : t("not resumable")}</span>
           {/if}
         </div>
-        <button class="icon-btn boxed" title="Yeniden kontrol et" aria-label="Yeniden kontrol et" onclick={inspect}><Icon name="retry" /></button>
-        <button class="icon-btn boxed" class:active={showMore} title="Gelişmiş" aria-label="Gelişmiş" onclick={() => (showMore = !showMore)}><Icon name="settings" /></button>
+        <button class="icon-btn boxed" title={t("Check again")} aria-label={t("Check again")} onclick={inspect}><Icon name="retry" /></button>
+        <button class="icon-btn boxed" class:active={showMore} title={t("Advanced")} aria-label={t("Advanced")} onclick={() => (showMore = !showMore)}><Icon name="settings" /></button>
       </div>
     {/if}
 
     {#if showMore && !media}
       <div class="more">
-        <input bind:value={user} placeholder="Kullanıcı adı" autocomplete="off" />
-        <input type="password" bind:value={pass} placeholder="Şifre" autocomplete="off" />
-        <select bind:value={conns} title="Bağlantı sayısı">
-          <option value="">Bağlantı: varsayılan</option>
-          {#each [1, 2, 4, 8, 16, 32] as n (n)}<option value={String(n)}>{n} bağlantı</option>{/each}
+        <input bind:value={user} placeholder={t("User name")} autocomplete="off" />
+        <input type="password" bind:value={pass} placeholder={t("Password")} autocomplete="off" />
+        <select bind:value={conns} title={t("Connections")}>
+          <option value="">{t("Connections: default")}</option>
+          {#each [1, 2, 4, 8, 16, 32] as n (n)}<option value={String(n)}>{t(n === 1 ? "{n} connection" : "{n} connections", { n })}</option>{/each}
         </select>
-        <select bind:value={queue} title="Kuyruk">
-          {#each queues as q (q.id)}<option value={q.id}>{q.name}</option>{/each}
+        <select bind:value={queue} title={t("Queue")}>
+          {#each queues as q (q.id)}<option value={q.id}>{queueLabel(q)}</option>{/each}
         </select>
       </div>
     {/if}
@@ -244,22 +245,22 @@
       <div class="status-line">
         <span class="spinner"></span>
         {#if tool}
-          İlk kullanım: {toolNames[tool.name] ?? tool.name} indiriliyor… {tool.total ? `%${Math.floor((tool.downloaded / tool.total) * 100)}` : formatBytes(tool.downloaded)}
+          {t("First use: downloading the {tool}…", { tool: t(toolNames[tool.name] ?? tool.name) })} {tool.total ? t("{n}%", { n: Math.floor((tool.downloaded / tool.total) * 100) }) : formatBytes(tool.downloaded)}
         {:else}
-          Video bilgileri alınıyor…
+          {t("Getting video details…")}
         {/if}
       </div>
     {/if}
     {#if error}<p class="error wrap">{error}</p>{/if}
-    {#if info?.html}<p class="warn small">Bu bağlantı bir web sayfası döndürüyor; dosya değil, sayfa indirilecek.</p>{/if}
+    {#if info?.html}<p class="warn small">{t("This link returns a web page; the page will be downloaded, not a file.")}</p>{/if}
 
     <div class="actions">
-      <button class="btn" disabled={busy || !urls.length || (isMedia && !media && !error)} onclick={() => submit(false, !!error)} title="Listeye ekle, şimdi başlatma">Ekle</button>
+      <button class="btn" disabled={busy || !urls.length || (isMedia && !media && !error)} onclick={() => submit(false, !!error)} title={t("Add to the list without starting")}>{t("Add")}</button>
       <button class="btn primary" disabled={busy || !urls.length || (isMedia && !media && !error)} onclick={() => submit(true, !!error)}>
-        {error && isMedia ? "Dosya olarak indir" : "İndir"}
+        {error && isMedia ? t("Download as a file") : t("Download")}
       </button>
       <span class="spacer"></span>
-      <button class="btn" onclick={() => win.close()}>Vazgeç</button>
+      <button class="btn" onclick={() => win.close()}>{t("Cancel")}</button>
     </div>
     </div>
   </main>

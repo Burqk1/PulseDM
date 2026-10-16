@@ -1,10 +1,12 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { open as openDialog } from "@tauri-apps/plugin-dialog";
+  import { getVersion } from "@tauri-apps/api/app";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { slide } from "svelte/transition";
   import { disable as disableAutostart, enable as enableAutostart, isEnabled as autostartEnabled } from "@tauri-apps/plugin-autostart";
   import Icon from "$lib/Icon.svelte";
+  import { LANGUAGES, locale, queueLabel, t } from "$lib/i18n.svelte";
   import { applyPrefs, followPrefs, setPrefs, type Prefs } from "$lib/prefs";
   import {
     api,
@@ -19,18 +21,19 @@
     type Download,
     type QueueConfig,
     type Status,
+    type UpdateInfo,
   } from "$lib/api";
 
   type SortKey = "name" | "size" | "status" | "speed" | "eta" | "added";
   type SettingsTab = "appearance" | "download" | "folders" | "network" | "windows" | "sites" | "browser";
   const SETTINGS_TABS: { id: SettingsTab; label: string; icon: string }[] = [
-    { id: "appearance", label: "Görünüm", icon: "image" },
-    { id: "download", label: "İndirme", icon: "speed" },
-    { id: "folders", label: "Klasörler", icon: "folder" },
-    { id: "network", label: "Bağlantı", icon: "link" },
-    { id: "windows", label: "Pencereler", icon: "list" },
-    { id: "sites", label: "Site kuralları", icon: "shield" },
-    { id: "browser", label: "Tarayıcı", icon: "open" },
+    { id: "appearance", label: "Appearance", icon: "image" },
+    { id: "download", label: "Downloads", icon: "speed" },
+    { id: "folders", label: "Folders", icon: "folder" },
+    { id: "network", label: "Connection", icon: "link" },
+    { id: "windows", label: "Windows", icon: "list" },
+    { id: "sites", label: "Site rules", icon: "shield" },
+    { id: "browser", label: "Browser", icon: "open" },
   ];
 
   let downloads = $state<Record<string, Download>>({});
@@ -71,6 +74,34 @@
   let maximized = $state(false);
   let openMenu = $state<string | null>(null);
   let aboutOpen = $state(false);
+  let appVersion = $state("");
+  let update = $state<UpdateInfo | null>(null);
+  let updateDismissed = $state(false);
+  let installing = $state(false);
+  let checking = $state(false);
+
+  async function checkUpdates() {
+    checking = true;
+    try {
+      update = await api.checkForUpdates();
+      updateDismissed = false;
+      if (!update) flash(t("Pulse DM is up to date ({version})", { version: appVersion }), "info");
+    } catch (e) {
+      flash(t("Could not check for updates: {error}", { error: String(e) }));
+    } finally {
+      checking = false;
+    }
+  }
+
+  async function installUpdate() {
+    installing = true;
+    try {
+      await api.installUpdate();
+    } catch (e) {
+      installing = false;
+      flash(t("Could not install the update: {error}", { error: String(e) }));
+    }
+  }
 
   type MenuItem =
     | { label: string; kbd?: string; action: () => void; disabled?: () => boolean; checked?: () => boolean }
@@ -83,80 +114,87 @@
   const MENUS: { id: string; label: string; items: MenuItem[] }[] = [
     {
       id: "file",
-      label: "Dosya",
+      label: "File",
       items: [
-        { label: "Bağlantı ekle", kbd: "Ctrl+N", action: () => openAdd() },
+        { label: "Add link", kbd: "Ctrl+N", action: () => openAdd() },
         "-",
-        { label: "Pencereyi kapat", action: () => appWindow.close() },
-        { label: "Çıkış", action: () => run(api.quit()) },
+        { label: "Close window", action: () => appWindow.close() },
+        { label: "Exit", action: () => run(api.quit()) },
       ],
     },
     {
       id: "tasks",
-      label: "Görevler",
+      label: "Tasks",
       items: [
-        { label: "Seçilenleri sürdür", action: () => forSelection(api.resume), disabled: () => !selection.length },
-        { label: "Seçilenleri duraklat", action: () => forSelection(api.pause), disabled: () => !selection.length },
-        { label: "Seçilenleri sil", kbd: "Del", action: () => askRemove(selection), disabled: () => !selection.length },
+        { label: "Resume selected", action: () => forSelection(api.resume), disabled: () => !selection.length },
+        { label: "Pause selected", action: () => forSelection(api.pause), disabled: () => !selection.length },
+        { label: "Delete selected", kbd: "Del", action: () => askRemove(selection), disabled: () => !selection.length },
         "-",
-        { label: "Tümünü başlat", action: () => run(api.resumeAll()) },
-        { label: "Tümünü durdur", action: () => run(api.pauseAll()) },
-        { label: "Tamamlananları temizle", action: () => run(api.clearCompleted()) },
+        { label: "Start all", action: () => run(api.resumeAll()) },
+        { label: "Stop all", action: () => run(api.pauseAll()) },
+        { label: "Clear finished", action: () => run(api.clearCompleted()) },
         "-",
-        { label: "Bitince hiçbir şey yapma", action: () => setAfterAll("nothing"), checked: () => afterAll === "nothing" },
-        { label: "Bitince bilgisayarı kapat", action: () => setAfterAll("shutdown"), checked: () => afterAll === "shutdown" },
-        { label: "Bitince uyku moduna al", action: () => setAfterAll("sleep"), checked: () => afterAll === "sleep" },
+        { label: "When done, do nothing", action: () => setAfterAll("nothing"), checked: () => afterAll === "nothing" },
+        { label: "When done, shut down", action: () => setAfterAll("shutdown"), checked: () => afterAll === "shutdown" },
+        { label: "When done, sleep", action: () => setAfterAll("sleep"), checked: () => afterAll === "sleep" },
       ],
     },
     {
       id: "tools",
-      label: "Araçlar",
+      label: "Tools",
       items: [
-        { label: "Ayarlar", action: () => openSettings() },
-        { label: "Yeni kuyruk", action: () => openQueue() },
-        { label: "Site kuralları", action: () => openSettings("sites") },
+        { label: "Settings", action: () => openSettings() },
+        { label: "New queue", action: () => openQueue() },
+        { label: "Site rules", action: () => openSettings("sites") },
         "-",
-        { label: "Tarayıcı eklentisi", action: () => openSettings("browser") },
+        { label: "Browser extension", action: () => openSettings("browser") },
       ],
     },
     {
       id: "help",
-      label: "Yardım",
-      items: [{ label: "Pulse DM hakkında", action: () => (aboutOpen = true) }],
+      label: "Help",
+      items: [
+        { label: "Check for updates", action: checkUpdates, disabled: () => checking || installing },
+        "-",
+        { label: "About Pulse DM", action: () => (aboutOpen = true) },
+      ],
     },
   ];
 
   const ACTIVE: Status[] = ["queued", "connecting", "downloading", "processing"];
-  const DAYS = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"];
+  const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
   const CATEGORIES: { id: Category; label: string }[] = [
-    { id: "archive", label: "Arşiv" },
-    { id: "program", label: "Program" },
-    { id: "video", label: "Video" },
-    { id: "audio", label: "Müzik" },
-    { id: "image", label: "Görsel" },
-    { id: "document", label: "Belge" },
-    { id: "other", label: "Diğer" },
+    { id: "archive", label: "Archives" },
+    { id: "program", label: "Programs" },
+    { id: "video", label: "Videos" },
+    { id: "audio", label: "Music" },
+    { id: "image", label: "Images" },
+    { id: "document", label: "Documents" },
+    { id: "other", label: "Other" },
   ];
   const GROUPS: { id: Group; label: string; icon: string }[] = [
-    { id: "all", label: "Tümü", icon: "all" },
-    { id: "finished", label: "Tamamlananlar", icon: "finished" },
-    { id: "unfinished", label: "Yarım kalanlar", icon: "unfinished" },
+    { id: "all", label: "All", icon: "all" },
+    { id: "finished", label: "Finished", icon: "finished" },
+    { id: "unfinished", label: "Unfinished", icon: "unfinished" },
   ];
   const CATEGORY_LABEL = Object.fromEntries(CATEGORIES.map((c) => [c.id, c.label])) as Record<Category, string>;
 
   const STATUS_LABEL: Record<Status, string> = {
-    queued: "Sırada",
-    connecting: "Bağlanıyor",
-    downloading: "İndiriliyor",
-    paused: "Duraklatıldı",
-    completed: "Tamamlandı",
-    failed: "Hata",
-    processing: "İşleniyor",
+    queued: "Queued",
+    connecting: "Connecting",
+    downloading: "Downloading",
+    paused: "Paused",
+    completed: "Completed",
+    failed: "Error",
+    processing: "Processing",
   };
 
   const queues = $derived(config?.queues ?? []);
-  const queueName = (id: string) => queues.find((q) => q.id === id)?.name ?? "Ana kuyruk";
+  const queueName = (id: string) => {
+    const q = queues.find((q) => q.id === id);
+    return q ? queueLabel(q) : t("Main queue");
+  };
 
   function inView(d: Download): boolean {
     if (queueSel) return d.queue === queueSel && d.status !== "completed";
@@ -222,13 +260,13 @@
 
   function ago(ts: number): string {
     if (prefs && !prefs.relative_dates) {
-      return new Date(ts * 1000).toLocaleString("tr-TR", { dateStyle: "short", timeStyle: "short" });
+      return new Date(ts * 1000).toLocaleString(locale(), { dateStyle: "short", timeStyle: "short" });
     }
     const s = Math.max(0, Math.floor(now - ts));
-    if (s < 60) return "az önce";
-    if (s < 3600) return `${Math.floor(s / 60)} dakika önce`;
-    if (s < 86400) return `${Math.floor(s / 3600)} saat önce`;
-    return `${Math.floor(s / 86400)} gün önce`;
+    if (s < 60) return t("just now");
+    if (s < 3600) return t("{n} min ago", { n: Math.floor(s / 60) });
+    if (s < 86400) return t("{n} h ago", { n: Math.floor(s / 3600) });
+    return t("{n} d ago", { n: Math.floor(s / 86400) });
   }
 
   function setSort(key: SortKey) {
@@ -323,7 +361,7 @@
 
   async function saveQueue() {
     if (!config || !queueDraft) return;
-    if (!queueDraft.name.trim()) return flash("Kuyruğa bir ad ver");
+    if (!queueDraft.name.trim()) return flash(t("Give the queue a name"));
     const next: Config = JSON.parse(JSON.stringify(config));
     const i = next.queues.findIndex((q) => q.id === queueDraft!.id);
     if (i >= 0) next.queues[i] = { ...queueDraft, running: next.queues[i].running };
@@ -414,7 +452,11 @@
         }),
         await api.on<Download>("browser-added", (d) => {
           downloads[d.id] = d;
-          flash(`Tarayıcıdan eklendi: ${d.file_name}`, "info");
+          flash(t("Added from the browser: {name}", { name: d.file_name }), "info");
+        }),
+        await api.on<UpdateInfo>("update-available", (info) => {
+          if (update?.version !== info.version) updateDismissed = false;
+          update = info;
         }),
         await api.on<AfterAll>("after-all", (mode) => {
           afterAll = "nothing";
@@ -425,6 +467,8 @@
       downloads = Object.fromEntries(list.map((d) => [d.id, d]));
       config = await api.getConfig();
       afterAll = await api.getAfterAll();
+      appVersion = await getVersion();
+      update = await api.pendingUpdate();
       maximized = await appWindow.isMaximized();
       unlisten.push(await followPrefs((p) => (prefs = p)));
       unlisten.push(await appWindow.onResized(async () => (maximized = await appWindow.isMaximized())));
@@ -444,9 +488,11 @@
 
 {#snippet icon(name: string, size = 16)}<Icon {name} {size} />{/snippet}
 
+{#snippet rich(text: string)}{#each text.split(/(`[^`]+`|\*\*[^*]+\*\*|\[[^\]]+\])/) as part, i (i)}{#if part.startsWith("`")}<code>{part.slice(1, -1)}</code>{:else if part.startsWith("**")}<b>{part.slice(2, -2)}</b>{:else if part.startsWith("[")}<kbd>{part.slice(1, -1)}</kbd>{:else}{part}{/if}{/each}{/snippet}
+
 {#snippet th(key: SortKey, label: string, cls = "")}
   <button class="th {cls}" class:sorted={sortKey === key} onclick={() => setSort(key)}>
-    {label}
+    {t(label)}
     {#if sortKey === key}<span class="arrow" class:asc={sortAsc}>{@render icon("chevron", 12)}</span>{/if}
   </button>
 {/snippet}
@@ -465,14 +511,14 @@
         <div class="menu">
           <button class="menu-btn" class:open={openMenu === m.id}
             onclick={() => (openMenu = openMenu === m.id ? null : m.id)}
-            onmouseenter={() => openMenu && (openMenu = m.id)}>{m.label}</button>
+            onmouseenter={() => openMenu && (openMenu = m.id)}>{t(m.label)}</button>
           {#if openMenu === m.id}
             <div class="dropdown" role="menu">
               {#each m.items as item, i (i)}
                 {#if item === "-"}<div class="sep"></div>
                 {:else}
                   <button role="menuitem" disabled={item.disabled?.()} onclick={() => { openMenu = null; item.action(); }}>
-                    <span><span class="check-mark">{item.checked?.() ? "✓" : ""}</span>{item.label}</span>{#if item.kbd}<span class="kbd-hint">{item.kbd}</span>{/if}
+                    <span><span class="check-mark">{item.checked?.() ? "✓" : ""}</span>{t(item.label)}</span>{#if item.kbd}<span class="kbd-hint">{item.kbd}</span>{/if}
                   </button>
                 {/if}
               {/each}
@@ -484,20 +530,20 @@
     <div class="drag-fill" data-tauri-drag-region></div>
     <label class="search">
       {@render icon("search", 14)}
-      <input placeholder="Listede ara" bind:value={search} />
+      <input placeholder={t("Search the list")} bind:value={search} />
     </label>
     <div class="win-controls">
-      <button aria-label="Simge durumuna küçült" onclick={() => appWindow.minimize()}>
+      <button aria-label={t("Minimize")} onclick={() => appWindow.minimize()}>
         <svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 5h10" stroke="currentColor" /></svg>
       </button>
-      <button aria-label={maximized ? "Önceki boyut" : "Ekranı kapla"} onclick={() => appWindow.toggleMaximize()}>
+      <button aria-label={maximized ? t("Restore") : t("Maximize")} onclick={() => appWindow.toggleMaximize()}>
         {#if maximized}
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor"><rect x="0.5" y="2.5" width="7" height="7" /><path d="M2.5 2.5V0.5h7v7h-2" /></svg>
         {:else}
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor"><rect x="0.5" y="0.5" width="9" height="9" /></svg>
         {/if}
       </button>
-      <button class="close" aria-label="Kapat (tepsiye küçült)" title="Kapat — indirmeler tepside sürer" onclick={() => appWindow.close()}>
+      <button class="close" aria-label={t("Close (to tray)")} title={t("Close: downloads keep running in the tray")} onclick={() => appWindow.close()}>
         <svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10" stroke="currentColor" /></svg>
       </button>
     </div>
@@ -509,7 +555,7 @@
         <div class="group">
           <button class="head" class:active={!queueSel && group === g.id && !cat} onclick={() => selectGroup(g.id)}>
             {@render icon(g.icon, 15)}
-            <span class="label">{g.label}</span>
+            <span class="label">{t(g.label)}</span>
             <span class="chev" class:open={openGroup === g.id} role="presentation"
               onclick={(e) => { e.stopPropagation(); openGroup = openGroup === g.id ? null : g.id; }}>{@render icon("chevron", 12)}</span>
           </button>
@@ -517,7 +563,7 @@
             <div class="items" transition:slide={{ duration: 160 }}>
               {#each CATEGORIES as c (c.id)}
                 <button class="item" class:active={!queueSel && group === g.id && cat === c.id} onclick={() => selectCategory(g.id, c.id)}>
-                  {@render icon(c.id, 14)} <span class="label">{c.label}</span>
+                  {@render icon(c.id, 14)} <span class="label">{t(c.label)}</span>
                 </button>
               {/each}
             </div>
@@ -529,27 +575,27 @@
     <nav class="card">
       <button class="head" onclick={() => (queuesOpen = !queuesOpen)}>
         {@render icon("queue", 15)}
-        <span class="label">Kuyruklar</span>
+        <span class="label">{t("Queues")}</span>
         <span class="chev" class:open={queuesOpen}>{@render icon("chevron", 12)}</span>
       </button>
       {#if queuesOpen}
         <div class="items" transition:slide={{ duration: 160 }}>
           {#each queues as q (q.id)}
             <div class="item queue" class:active={queueSel === q.id}>
-              <button class="q-main" onclick={() => selectQueue(q.id)} title={q.running ? "Çalışıyor" : "Durdu"}>
+              <button class="q-main" onclick={() => selectQueue(q.id)} title={q.running ? t("Running") : t("Stopped")}>
                 <span class="dot" class:on={q.running}></span>
-                <span class="label">{q.name}</span>
-                {#if q.schedule.enabled}<span class="sched" title="Zamanlanmış">{@render icon("clock", 11)}</span>{/if}
+                <span class="label">{queueLabel(q)}</span>
+                {#if q.schedule.enabled}<span class="sched" title={t("Scheduled")}>{@render icon("clock", 11)}</span>{/if}
               </button>
               <span class="q-count">{queueCount(q.id)}</span>
               <span class="q-actions">
-                <button class="mini" title={q.running ? "Kuyruğu durdur" : "Kuyruğu başlat"} aria-label="Başlat/durdur"
+                <button class="mini" title={q.running ? t("Stop queue") : t("Start queue")} aria-label={t("Start/stop")}
                   onclick={() => run(q.running ? api.stopQueue(q.id) : api.startQueue(q.id))}>{@render icon(q.running ? "stop" : "play", 11)}</button>
-                <button class="mini" title="Düzenle" aria-label="Düzenle" onclick={() => openQueue(q)}>{@render icon("edit", 11)}</button>
+                <button class="mini" title={t("Edit")} aria-label={t("Edit")} onclick={() => openQueue(q)}>{@render icon("edit", 11)}</button>
               </span>
             </div>
           {/each}
-          <button class="item add-queue" onclick={() => openQueue()}>{@render icon("plus", 13)} <span class="label">Yeni kuyruk</span></button>
+          <button class="item add-queue" onclick={() => openQueue()}>{@render icon("plus", 13)} <span class="label">{t("New queue")}</span></button>
         </div>
       {/if}
     </nav>
@@ -557,45 +603,54 @@
 
   <section class="content">
     <div class="toolbar" class:no-labels={prefs && !prefs.tool_labels}>
-      <button class="add-btn" onclick={() => openAdd()} title="Yeni indirme (Ctrl+N)">
-        {@render icon("link")} Bağlantı ekle
+      <button class="add-btn" onclick={() => openAdd()} title={t("New download (Ctrl+N)")}>
+        {@render icon("link")} {t("Add link")}
       </button>
       <span class="divider"></span>
-      <button class="tool" disabled={!selection.length} onclick={() => forSelection(api.resume)}>{@render icon("play", 16)}<span>Sürdür</span></button>
-      <button class="tool" disabled={!selection.length} onclick={() => forSelection(api.pause)}>{@render icon("pause", 16)}<span>Duraklat</span></button>
-      <button class="tool" disabled={!selection.length} onclick={() => askRemove(selection)}>{@render icon("trash", 16)}<span>Sil</span></button>
+      <button class="tool" disabled={!selection.length} onclick={() => forSelection(api.resume)}>{@render icon("play", 16)}<span>{t("Resume")}</span></button>
+      <button class="tool" disabled={!selection.length} onclick={() => forSelection(api.pause)}>{@render icon("pause", 16)}<span>{t("Pause")}</span></button>
+      <button class="tool" disabled={!selection.length} onclick={() => askRemove(selection)}>{@render icon("trash", 16)}<span>{t("Delete")}</span></button>
       <span class="divider"></span>
-      <button class="tool" onclick={() => run(api.resumeAll())}>{@render icon("play", 16)}<span>Tümünü başlat</span></button>
-      <button class="tool" onclick={() => run(api.pauseAll())}>{@render icon("stop", 16)}<span>Tümünü durdur</span></button>
-      <button class="tool" disabled={!anyFinished} onclick={() => run(api.clearCompleted())}>{@render icon("broom", 16)}<span>Temizle</span></button>
-      <button class="tool" onclick={() => openSettings()}>{@render icon("settings", 16)}<span>Ayarlar</span></button>
+      <button class="tool" onclick={() => run(api.resumeAll())}>{@render icon("play", 16)}<span>{t("Start all")}</span></button>
+      <button class="tool" onclick={() => run(api.pauseAll())}>{@render icon("stop", 16)}<span>{t("Stop all")}</span></button>
+      <button class="tool" disabled={!anyFinished} onclick={() => run(api.clearCompleted())}>{@render icon("broom", 16)}<span>{t("Clear")}</span></button>
+      <button class="tool" onclick={() => openSettings()}>{@render icon("settings", 16)}<span>{t("Settings")}</span></button>
     </div>
 
+    {#if update && !updateDismissed}
+      <div class="banner update">
+        <span>{t("New version available:")} <b>Pulse DM {update.version}</b>{#if appVersion} <span class="muted">{t("(you have {version})", { version: appVersion })}</span>{/if}</span>
+        <span class="banner-actions">
+          <button class="btn" disabled={installing} onclick={() => (updateDismissed = true)}>{t("Later")}</button>
+          <button class="btn primary" disabled={installing} onclick={installUpdate}>{installing ? t("Installing…") : t("Update and restart")}</button>
+        </span>
+      </div>
+    {/if}
     {#if afterBanner === "shutdown"}
       <div class="banner">
-        Tüm indirmeler bitti. Bilgisayar 60 saniye içinde kapanacak.
-        <button class="btn" onclick={() => { run(api.cancelShutdown(), "Kapatma iptal edildi"); afterBanner = null; }}>İptal et</button>
+        {t("All downloads finished. The computer will shut down in 60 seconds.")}
+        <button class="btn" onclick={() => { run(api.cancelShutdown(), t("Shutdown cancelled")); afterBanner = null; }}>{t("Cancel")}</button>
       </div>
     {/if}
 
     <div class="table">
       <div class="thead">
-        <label class="cell check"><input type="checkbox" checked={allChecked} onchange={toggleAll} aria-label="Tümünü seç" /></label>
-        {@render th("name", "Ad")}
-        {@render th("size", "Boyut", "num")}
-        {@render th("status", "Durum")}
-        {@render th("speed", "Hız", "num")}
-        {@render th("eta", "Kalan süre", "num")}
-        {@render th("added", "Eklenme")}
+        <label class="cell check"><input type="checkbox" checked={allChecked} onchange={toggleAll} aria-label={t("Select all")} /></label>
+        {@render th("name", "Name")}
+        {@render th("size", "Size", "num")}
+        {@render th("status", "Status")}
+        {@render th("speed", "Speed", "num")}
+        {@render th("eta", "Time left", "num")}
+        {@render th("added", "Added")}
       </div>
 
       <div class="tbody">
         {#if visible.length === 0}
           <div class="empty">
             {@render icon("speed", 34)}
-            <h2>{all.length ? "Bu görünümde indirme yok" : "Henüz indirme yok"}</h2>
-            <p>Bir bağlantıyı kopyalayıp <kbd>Ctrl</kbd>+<kbd>V</kbd> ile yapıştır ya da <b>Bağlantı ekle</b>'ye bas.</p>
-            <button class="btn" onclick={() => openSettings("browser")}>Tarayıcı eklentisini kur</button>
+            <h2>{all.length ? t("No downloads in this view") : t("No downloads yet")}</h2>
+            <p>{@render rich(t("Copy a link and paste it with [Ctrl]+[V], or press **Add link**."))}</p>
+            <button class="btn" onclick={() => openSettings("browser")}>{t("Install the browser extension")}</button>
           </div>
         {:else}
           {#each visible as d (d.id)}
@@ -610,24 +665,24 @@
               ondblclick={() => openDetails(d.id)}
             >
               <label class="cell check" onclick={(e) => e.stopPropagation()}>
-                <input type="checkbox" checked={checked.has(d.id)} onchange={() => toggleCheck(d.id)} aria-label="Seç" />
+                <input type="checkbox" checked={checked.has(d.id)} onchange={() => toggleCheck(d.id)} aria-label={t("Select")} />
               </label>
               <div class="cell name">
                 <span class="ficon">{@render icon(d.category, 15)}</span>
                 <div class="name-text">
                   <span class="fname" title={d.file_name}>{d.file_name}</span>
-                  <span class="fcat">{CATEGORY_LABEL[d.category]}{#if d.queue !== "main"} · {queueName(d.queue)}{/if}</span>
+                  <span class="fcat">{t(CATEGORY_LABEL[d.category])}{#if d.queue !== "main"} · {queueName(d.queue)}{/if}</span>
                 </div>
               </div>
               <div class="cell num">{d.parts && d.status !== "completed" ? `${formatBytes(d.downloaded)}+` : formatBytes(d.size)}</div>
               <div class="cell status">
                 {#if d.status === "completed"}
-                  <span class="st-completed">Tamamlandı</span>
+                  <span class="st-completed">{t("Completed")}</span>
                 {:else if d.status === "failed"}
-                  <span class="st-failed" title={d.error ?? ""}>Hata</span>
+                  <span class="st-failed" title={d.error ?? ""}>{t("Error")}</span>
                 {:else}
                   <span class="st-{d.status}">
-                    {#if (d.size || d.parts) && d.downloaded > 0}%{Math.floor(progress(d))} {/if}{STATUS_LABEL[d.status]}
+                    {#if (d.size || d.parts) && d.downloaded > 0}{t("{n}%", { n: Math.floor(progress(d)) })} {/if}{t(STATUS_LABEL[d.status])}
                   </span>
                   <div class="mini-bar" class:indeterminate={!d.size && !d.parts && d.status === "downloading"}>
                     <div class="mini-fill st-bg-{d.status}" style="width:{progress(d)}%"></div>
@@ -645,8 +700,8 @@
 
     <footer class="statusbar">
       {#if afterAll !== "nothing"}
-        <button class="after-chip" title="Görevler menüsünden değiştir" onclick={() => setAfterAll("nothing")}>
-          {@render icon("power", 13)} Bitince {afterAll === "shutdown" ? "kapanacak" : "uyuyacak"} ✕
+        <button class="after-chip" title={t("Change it from the Tasks menu")} onclick={() => setAfterAll("nothing")}>
+          {@render icon("power", 13)} {afterAll === "shutdown" ? t("Shuts down when done") : t("Sleeps when done")} ✕
         </button>
       {/if}
       <span>{@render icon("list", 14)} {all.length}</span>
@@ -659,12 +714,12 @@
 {#if settingsOpen && draft && prefsDraft}
   <div class="overlay" role="presentation" onclick={(e) => e.target === e.currentTarget && closeSettings()}>
     <form class="modal settings" onsubmit={(e) => { e.preventDefault(); saveSettings(); }}>
-      <div class="modal-title">{@render icon("settings")} Ayarlar</div>
+      <div class="modal-title">{@render icon("settings")} {t("Settings")}</div>
       <div class="settings-body">
         <nav class="settings-nav">
-          {#each SETTINGS_TABS as t (t.id)}
-            <button type="button" class:active={settingsTab === t.id} onclick={() => (settingsTab = t.id)}>
-              {@render icon(t.icon, 15)} {t.label}
+          {#each SETTINGS_TABS as tab (tab.id)}
+            <button type="button" class:active={settingsTab === tab.id} onclick={() => (settingsTab = tab.id)}>
+              {@render icon(tab.icon, 15)} {t(tab.label)}
             </button>
           {/each}
         </nav>
@@ -672,142 +727,152 @@
         <div class="settings-pane">
           {#if settingsTab === "appearance"}
             <div class="srow">
-              <div><b>Tema</b><span>Sistem, Windows'un açık/koyu ayarını izler.</span></div>
+              <div><b>{t("Language")}</b><span>{t("System follows the Windows display language.")}</span></div>
+              <select bind:value={prefsDraft.language} onchange={previewPrefs}>
+                {#each LANGUAGES as lang (lang.id)}<option value={lang.id}>{lang.id === "system" ? t(lang.label) : lang.label}</option>{/each}
+              </select>
+            </div>
+            <div class="srow">
+              <div><b>{t("Theme")}</b><span>{t("System follows the Windows light/dark setting.")}</span></div>
               <div class="seg-control">
-                {#each [["system", "Sistem"], ["dark", "Koyu"], ["light", "Açık"]] as [v, l] (v)}
-                  <button type="button" class:on={prefsDraft.theme === v} onclick={() => { if (prefsDraft) { prefsDraft.theme = v as Prefs["theme"]; previewPrefs(); } }}>{l}</button>
+                {#each [["system", "System"], ["dark", "Dark"], ["light", "Light"]] as [v, l] (v)}
+                  <button type="button" class:on={prefsDraft.theme === v} onclick={() => { if (prefsDraft) { prefsDraft.theme = v as Prefs["theme"]; previewPrefs(); } }}>{t(l)}</button>
                 {/each}
               </div>
             </div>
             <div class="srow">
-              <div><b>Arayüz ölçeği</b><span>Yazı ve düğme boyutu.</span></div>
+              <div><b>{t("Interface scale")}</b><span>{t("Size of text and buttons.")}</span></div>
               <select bind:value={prefsDraft.ui_scale} onchange={previewPrefs}>
-                {#each [0.9, 1, 1.1, 1.25] as v (v)}<option value={v}>%{Math.round(v * 100)}</option>{/each}
+                {#each [0.9, 1, 1.1, 1.25] as v (v)}<option value={v}>{t("{n}%", { n: Math.round(v * 100) })}</option>{/each}
               </select>
             </div>
             <label class="srow">
-              <div><b>Göreli tarih</b><span>"5 dakika önce" gibi; kapalıysa tam tarih ve saat.</span></div>
+              <div><b>{t("Relative dates")}</b><span>{t("Like \"5 min ago\"; when off, the full date and time.")}</span></div>
               <input type="checkbox" bind:checked={prefsDraft.relative_dates} />
             </label>
             <label class="srow">
-              <div><b>Araç çubuğu yazıları</b><span>Simgelerin altında ad göster.</span></div>
+              <div><b>{t("Toolbar labels")}</b><span>{t("Show names under the icons.")}</span></div>
               <input type="checkbox" bind:checked={prefsDraft.tool_labels} />
             </label>
           {:else if settingsTab === "download"}
             <div class="srow">
-              <div><b>Bağlantı sayısı</b><span>İndirme başına. Sunucu sınır koyarsa kendiliğinden azalır.</span></div>
+              <div><b>{t("Connections")}</b><span>{t("Per download. Lowered automatically if the server sets a limit.")}</span></div>
               <div class="range"><input type="range" min="1" max="32" bind:value={draft.connections} /><b>{draft.connections}</b></div>
             </div>
             <div class="srow">
-              <div><b>Aynı anda indirme</b><span>Ana kuyrukta birlikte çalışan indirme sayısı.</span></div>
+              <div><b>{t("Simultaneous downloads")}</b><span>{t("How many downloads run together in the main queue.")}</span></div>
               <div class="range"><input type="range" min="1" max="10" bind:value={draft.queues[0].max_active} /><b>{draft.queues[0].max_active}</b></div>
             </div>
             <div class="srow">
-              <div><b>Genel hız sınırı</b><span>MB/s, 0 = sınırsız.</span></div>
+              <div><b>{t("Global speed limit")}</b><span>{t("MB/s, 0 = unlimited.")}</span></div>
               <input class="num" type="number" min="0" step="0.5" bind:value={limitMb} />
             </div>
             <div class="srow">
-              <div><b>En küçük parça</b><span>KB. Bundan küçük aralıklar bölünmez.</span></div>
+              <div><b>{t("Smallest part")}</b><span>{t("KB. Ranges smaller than this are not split.")}</span></div>
               <input class="num" type="number" min="64" step="64" bind:value={minSplitKb} />
             </div>
             <div class="srow">
-              <div><b>Tekrar deneme</b><span>Hata veren bağlantı en fazla bu kadar yeniden denenir.</span></div>
+              <div><b>{t("Retries")}</b><span>{t("A failing connection is retried at most this many times.")}</span></div>
               <input class="num" type="number" min="0" max="50" bind:value={draft.max_retries} />
             </div>
             <label class="srow">
-              <div><b>Sunucudaki dosya tarihini koru</b><span>Biten dosyaya bugünün değil, sunucudaki değişiklik tarihini ver.</span></div>
+              <div><b>{t("Keep the server's file date")}</b><span>{t("Give the finished file the server's modification date instead of today.")}</span></div>
               <input type="checkbox" bind:checked={draft.keep_server_time} />
             </label>
             <label class="srow">
-              <div><b>SSL sertifika hatalarını yok say</b><span class="warn-text">Güvensiz. Sadece güvendiğin, sertifikası bozuk sitelerde aç.</span></div>
+              <div><b>{t("Ignore SSL certificate errors")}</b><span class="warn-text">{t("Unsafe. Only turn on for sites you trust that have a broken certificate.")}</span></div>
               <input type="checkbox" bind:checked={draft.ignore_tls_errors} />
             </label>
           {:else if settingsTab === "folders"}
             <div class="srow column">
-              <div><b>Varsayılan indirme klasörü</b></div>
+              <div><b>{t("Default download folder")}</b></div>
               <div class="field-row">
                 <input bind:value={draft.download_dir} />
-                <button type="button" class="icon-btn boxed" aria-label="Klasör seç" onclick={async () => draft && (draft.download_dir = await pickDir(draft.download_dir))}>{@render icon("folder")}</button>
+                <button type="button" class="icon-btn boxed" aria-label={t("Choose folder")} onclick={async () => draft && (draft.download_dir = await pickDir(draft.download_dir))}>{@render icon("folder")}</button>
               </div>
             </div>
             <label class="srow">
-              <div><b>Kategori klasörleri</b><span>Videolar <code>Video</code>, arşivler <code>Arşiv</code>, programlar <code>Program</code>… alt klasörüne kaydedilir.</span></div>
+              <div><b>{t("Category folders")}</b><span>{@render rich(t("Videos, archives, programs… are saved into their own subfolder (`Videos`, `Compressed`, `Programs`…)."))}</span></div>
               <input type="checkbox" bind:checked={draft.category_folders} />
             </label>
           {:else if settingsTab === "network"}
             <div class="srow">
-              <div><b>Proxy</b><span>Sistem, Windows'taki proxy ayarını kullanır.</span></div>
+              <div><b>{t("Proxy")}</b><span>{t("System uses the Windows proxy setting.")}</span></div>
               <select bind:value={draft.proxy.mode}>
-                <option value="system">Sistem ayarları</option>
-                <option value="none">Proxy kullanma</option>
-                <option value="manual">Elle gir</option>
+                <option value="system">{t("System settings")}</option>
+                <option value="none">{t("No proxy")}</option>
+                <option value="manual">{t("Manual")}</option>
               </select>
             </div>
             {#if draft.proxy.mode === "manual"}
               <div class="srow column">
-                <div><b>Proxy adresi</b></div>
-                <input bind:value={draft.proxy.url} placeholder="http://127.0.0.1:8080  veya  socks5://kullanıcı:şifre@host:1080" />
+                <div><b>{t("Proxy address")}</b></div>
+                <input bind:value={draft.proxy.url} placeholder={t("http://127.0.0.1:8080  or  socks5://user:password@host:1080")} />
               </div>
             {/if}
             <div class="srow column">
-              <div><b>User-Agent</b><span>Bazı siteler tarayıcı dışı programları engeller; tarayıcının User-Agent'ını yazabilirsin.</span></div>
+              <div><b>User-Agent</b><span>{t("Some sites block non-browser programs; you can enter your browser's User-Agent.")}</span></div>
               <input bind:value={draft.user_agent} />
             </div>
           {:else if settingsTab === "windows"}
             <label class="srow">
-              <div><b>İlerleme penceresi</b><span>İndirme başlayınca ayrı ilerleme penceresini aç.</span></div>
+              <div><b>{t("Progress window")}</b><span>{t("Open a separate progress window when a download starts.")}</span></div>
               <input type="checkbox" bind:checked={prefsDraft.progress_window} />
             </label>
             <label class="srow">
-              <div><b>Tamamlandı penceresi</b><span>İndirme bitince penceresini öne getir (Aç / Klasörü aç).</span></div>
+              <div><b>{t("Completion window")}</b><span>{t("Bring its window forward when a download finishes (Open / Open folder).")}</span></div>
               <input type="checkbox" bind:checked={prefsDraft.completion_window} />
             </label>
             <label class="srow">
-              <div><b>Bildirimler</b><span>İndirme bitince ya da hata verince Windows bildirimi göster.</span></div>
+              <div><b>{t("Notifications")}</b><span>{t("Show a Windows notification when a download finishes or fails.")}</span></div>
               <input type="checkbox" bind:checked={prefsDraft.notifications} />
             </label>
             <label class="srow">
-              <div><b>Windows açılınca başlat</b><span>Tepside bekler; tarayıcıdan gelen indirmeler programı açmadan başlar.</span></div>
+              <div><b>{t("Check for updates automatically")}</b><span>{t("Tell me when a new version is out; it installs in one click.")}</span></div>
+              <input type="checkbox" bind:checked={prefsDraft.auto_update} />
+            </label>
+            <label class="srow">
+              <div><b>{t("Start with Windows")}</b><span>{t("Waits in the tray; downloads from the browser start without opening the program.")}</span></div>
               <input type="checkbox" bind:checked={autostart} onchange={() => run(autostart ? enableAutostart() : disableAutostart())} />
             </label>
           {:else if settingsTab === "sites"}
-            <p class="muted small">Belirli bir siteye özel bağlantı sayısı ve hız sınırı. Alt alan adları da kapsanır.</p>
+            <p class="muted small">{t("Connection count and speed limit for a specific site. Subdomains are included.")}</p>
             <div class="rules">
               {#each draft.host_rules as rule, i (i)}
                 <div class="rule">
-                  <input bind:value={rule.host} placeholder="ornek.com" />
+                  <input bind:value={rule.host} placeholder={t("example.com")} />
                   <select value={rule.connections == null ? "" : String(rule.connections)} onchange={(e) => { const v = (e.target as HTMLSelectElement).value; rule.connections = v ? Number(v) : null; }}>
-                    <option value="">Bağlantı: varsayılan</option>
-                    {#each [1, 2, 4, 8, 16, 32] as n (n)}<option value={String(n)}>{n} bağlantı</option>{/each}
+                    <option value="">{t("Connections: default")}</option>
+                    {#each [1, 2, 4, 8, 16, 32] as n (n)}<option value={String(n)}>{t(n === 1 ? "{n} connection" : "{n} connections", { n })}</option>{/each}
                   </select>
-                  <input type="number" min="0" step="0.5" value={rule.speed_limit / MB} onchange={(e) => (rule.speed_limit = Math.round(Number((e.target as HTMLInputElement).value) * MB))} title="Hız sınırı (MB/s)" placeholder="MB/s" />
-                  <button type="button" class="icon-btn" aria-label="Kuralı sil" onclick={() => draft && draft.host_rules.splice(i, 1)}>{@render icon("trash")}</button>
+                  <input type="number" min="0" step="0.5" value={rule.speed_limit / MB} onchange={(e) => (rule.speed_limit = Math.round(Number((e.target as HTMLInputElement).value) * MB))} title={t("Speed limit (MB/s)")} placeholder="MB/s" />
+                  <button type="button" class="icon-btn" aria-label={t("Delete rule")} onclick={() => draft && draft.host_rules.splice(i, 1)}>{@render icon("trash")}</button>
                 </div>
               {/each}
             </div>
-            <div><button type="button" class="btn" onclick={() => draft?.host_rules.push({ host: "", connections: null, speed_limit: 0, user_agent: null })}>{@render icon("plus")} Kural ekle</button></div>
+            <div><button type="button" class="btn" onclick={() => draft?.host_rules.push({ host: "", connections: null, speed_limit: 0, user_agent: null })}>{@render icon("plus")} {t("Add rule")}</button></div>
           {:else}
-            <p>Tarayıcıdaki indirmelerin Pulse DM'e aktarılması için eklentiyi kur:</p>
+            <p>{t("Install the extension so browser downloads are passed to Pulse DM:")}</p>
             <ol class="steps">
-              <li>Chrome'da <code>chrome://extensions</code>, Edge'de <code>edge://extensions</code> sayfasını aç.</li>
-              <li>Sağ üstten <b>Geliştirici modu</b>'nu aç.</li>
-              <li><b>Paketlenmemiş öğe yükle</b>'ye bas ve aşağıdaki klasörü seç.</li>
+              <li>{@render rich(t("Open `chrome://extensions` in Chrome or `edge://extensions` in Edge."))}</li>
+              <li>{@render rich(t("Turn on **Developer mode** in the top right."))}</li>
+              <li>{@render rich(t("Press **Load unpacked** and choose the folder below."))}</li>
             </ol>
             <div>
               <button type="button" class="btn primary" onclick={async () => { try { extensionPath = await api.openExtensionFolder(); } catch (e) { flash(String(e)); } }}>
-                {@render icon("folder")} Eklenti klasörünü aç
+                {@render icon("folder")} {t("Open the extension folder")}
               </button>
             </div>
             {#if extensionPath}<code class="wrap">{extensionPath}</code>{/if}
-            <p class="muted small">Eklenti, indirmeleri tarayıcının çerezleriyle aktarır; giriş gerektiren sitelerden indirme de çalışır.</p>
+            <p class="muted small">{t("The extension passes downloads on with the browser's cookies, so sites that need a sign-in work too.")}</p>
           {/if}
         </div>
       </div>
 
       <div class="modal-actions">
         <span class="spacer"></span>
-        <button type="button" class="btn" onclick={closeSettings}>Vazgeç</button>
-        <button type="submit" class="btn primary">Kaydet</button>
+        <button type="button" class="btn" onclick={closeSettings}>{t("Cancel")}</button>
+        <button type="submit" class="btn primary">{t("Save")}</button>
       </div>
     </form>
   </div>
@@ -816,31 +881,31 @@
 {#if queueDraft}
   <div class="overlay" role="presentation" onclick={(e) => e.target === e.currentTarget && (queueDraft = null)}>
     <form class="modal" onsubmit={(e) => { e.preventDefault(); saveQueue(); }}>
-      <div class="modal-title">{@render icon("queue")} {queueIsNew ? "Yeni kuyruk" : "Kuyruğu düzenle"}</div>
+      <div class="modal-title">{@render icon("queue")} {queueIsNew ? t("New queue") : t("Edit queue")}</div>
       <div class="grid2">
-        <label>Ad<input bind:value={queueDraft.name} placeholder="Gece indirmeleri" disabled={queueDraft.id === "main"} /></label>
-        <label>Aynı anda indirme<input type="number" min="1" max="20" bind:value={queueDraft.max_active} /></label>
+        <label>{t("Name")}<input bind:value={queueDraft.name} placeholder={t("Night downloads")} disabled={queueDraft.id === "main"} /></label>
+        <label>{t("Simultaneous downloads")}<input type="number" min="1" max="20" bind:value={queueDraft.max_active} /></label>
       </div>
-      <label class="check-row"><input type="checkbox" bind:checked={queueDraft.schedule.enabled} /> Zamanlayıcıyı kullan</label>
+      <label class="check-row"><input type="checkbox" bind:checked={queueDraft.schedule.enabled} /> {t("Use the scheduler")}</label>
       {#if queueDraft.schedule.enabled}
         <div class="days">
           {#each DAYS as day, i (i)}
-            <button type="button" class="day" class:on={queueDraft.schedule.days.includes(i)} onclick={() => toggleDay(i)}>{day}</button>
+            <button type="button" class="day" class:on={queueDraft.schedule.days.includes(i)} onclick={() => toggleDay(i)}>{t(day)}</button>
           {/each}
         </div>
-        <span class="muted small">Gün seçilmezse her gün çalışır.</span>
+        <span class="muted small">{t("With no day selected it runs every day.")}</span>
         <div class="grid2">
-          <label>Başlama saati<input type="time" bind:value={queueDraft.schedule.start} /></label>
-          <label>Durma saati<input type="time" bind:value={queueDraft.schedule.stop} /></label>
+          <label>{t("Start time")}<input type="time" bind:value={queueDraft.schedule.start} /></label>
+          <label>{t("Stop time")}<input type="time" bind:value={queueDraft.schedule.stop} /></label>
         </div>
       {/if}
       <div class="modal-actions">
         {#if !queueIsNew && queueDraft.id !== "main"}
-          <button type="button" class="btn danger" onclick={() => queueDraft && deleteQueue(queueDraft.id)}>{@render icon("trash")} Sil</button>
+          <button type="button" class="btn danger" onclick={() => queueDraft && deleteQueue(queueDraft.id)}>{@render icon("trash")} {t("Delete")}</button>
         {/if}
         <span class="spacer"></span>
-        <button type="button" class="btn" onclick={() => (queueDraft = null)}>Vazgeç</button>
-        <button type="submit" class="btn primary">Kaydet</button>
+        <button type="button" class="btn" onclick={() => (queueDraft = null)}>{t("Cancel")}</button>
+        <button type="submit" class="btn primary">{t("Save")}</button>
       </div>
     </form>
   </div>
@@ -849,13 +914,13 @@
 {#if removeIds}
   <div class="overlay" role="presentation" onclick={(e) => e.target === e.currentTarget && (removeIds = null)}>
     <div class="modal small">
-      <div class="modal-title">{@render icon("trash")} {removeIds.length > 1 ? `${removeIds.length} indirmeyi sil` : "İndirmeyi sil"}</div>
+      <div class="modal-title">{@render icon("trash")} {removeIds.length > 1 ? t("Delete {n} downloads", { n: removeIds.length }) : t("Delete download")}</div>
       {#if removeIds.length === 1 && downloads[removeIds[0]]}<p class="wrap">{downloads[removeIds[0]].file_name}</p>{/if}
-      <label class="check-row"><input type="checkbox" bind:checked={removeFiles} /> Dosyaları diskten de sil</label>
+      <label class="check-row"><input type="checkbox" bind:checked={removeFiles} /> {t("Also delete the files from disk")}</label>
       <div class="modal-actions">
         <span class="spacer"></span>
-        <button class="btn" onclick={() => (removeIds = null)}>Vazgeç</button>
-        <button class="btn danger-fill" onclick={confirmRemove}>Sil</button>
+        <button class="btn" onclick={() => (removeIds = null)}>{t("Cancel")}</button>
+        <button class="btn danger-fill" onclick={confirmRemove}>{t("Delete")}</button>
       </div>
     </div>
   </div>
@@ -869,9 +934,9 @@
         <path d="M80 236h76l40-92 56 196 40-104h140" fill="none" stroke="#fff" stroke-width="40" stroke-linecap="round" stroke-linejoin="round" />
       </svg>
       <h3>Pulse DM</h3>
-      <p class="muted">Sürüm 0.1.0 · Burqk1</p>
-      <p>Hızlı, ücretsiz ve açık kaynak indirme yöneticisi.</p>
-      <div class="modal-actions"><span class="spacer"></span><button class="btn" onclick={() => (aboutOpen = false)}>Kapat</button></div>
+      <p class="muted">{t("Version {version}", { version: appVersion })} · Burqk1</p>
+      <p>{t("A fast, free and open-source download manager.")}</p>
+      <div class="modal-actions"><span class="spacer"></span><button class="btn" onclick={() => (aboutOpen = false)}>{t("Close")}</button></div>
     </div>
   </div>
 {/if}
@@ -1233,6 +1298,14 @@
     background: color-mix(in srgb, var(--warn) 16%, transparent);
     border: 1px solid color-mix(in srgb, var(--warn) 50%, transparent);
     border-radius: 8px;
+  }
+  .banner.update {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+  .banner-actions {
+    display: flex;
+    gap: 6px;
   }
   .table {
     flex: 1;

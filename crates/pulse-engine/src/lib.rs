@@ -4,6 +4,7 @@ mod engine;
 mod error;
 mod fsutil;
 mod hls;
+pub mod lang;
 mod limiter;
 mod media;
 mod probe;

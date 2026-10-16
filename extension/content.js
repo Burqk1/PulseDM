@@ -4,7 +4,8 @@
 
   const MIN_W = 240;
   const MIN_H = 135;
-  const IDLE = "Pulse DM ile indir";
+  const msg = (key) => chrome.i18n.getMessage(key);
+  const IDLE = msg("downloadWithPulse");
 
   let current = null;
   let hideTimer = 0;
@@ -24,12 +25,12 @@
       .x { padding:7px 8px; border-left:1px solid rgba(255,255,255,.25); opacity:.85; }
     </style>
     <div class="bar">
-      <button class="dl" title="Bu videoyu Pulse DM ile indir">
+      <button class="dl" title="${msg("downloadThisVideo")}">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
              stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
         <span></span>
       </button>
-      <button class="x" title="Bu video için gizle">✕</button>
+      <button class="x" title="${msg("hideForVideo")}">✕</button>
     </div>`;
   const label = root.querySelector("span");
   label.textContent = IDLE;
@@ -59,10 +60,39 @@
     current = null;
   }
 
-  function videoAt(x, y) {
-    for (const v of document.querySelectorAll("video")) {
+  function videoIn(scope, x, y) {
+    for (const v of scope.querySelectorAll("video")) {
       const r = v.getBoundingClientRect();
       if (big(r) && inside(r, x, y)) return v;
+    }
+    return null;
+  }
+
+  function deepVideoIn(scope, x, y, depth = 0) {
+    const hit = videoIn(scope, x, y);
+    if (hit || depth > 3) return hit;
+    for (const el of scope.querySelectorAll("*")) {
+      const found = el.shadowRoot && deepVideoIn(el.shadowRoot, x, y, depth + 1);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  function videoAt(x, y) {
+    const direct = videoIn(document, x, y);
+    if (direct) return direct;
+    for (const el of document.elementsFromPoint(x, y)) {
+      const found = el.shadowRoot && deepVideoIn(el.shadowRoot, x, y);
+      if (found) return found;
+      if (/^SHREDDIT-PLAYER/.test(el.tagName) && big(el.getBoundingClientRect())) return el;
+    }
+    return null;
+  }
+
+  function closestDeep(el, selector) {
+    for (let node = el; node; node = node.getRootNode()?.host) {
+      const hit = node.closest?.(selector);
+      if (hit) return hit;
     }
     return null;
   }
@@ -90,8 +120,27 @@
   addEventListener("resize", () => current && place(), { passive: true });
   document.addEventListener("fullscreenchange", () => current && setTimeout(place, 200));
 
+  function tiktokLink(video) {
+    if (/\/video\/\d+/.test(location.pathname)) return location.href;
+    const card = closestDeep(video, "article, [data-e2e*='item-container'], [class*='DivItemContainer']");
+    const scope = card ?? video.parentElement;
+    const link = scope?.querySelector("a[href*='/video/']");
+    if (link) return link.href;
+    let id = null;
+    for (let node = video; node && node !== card?.parentElement && !id; node = node.parentElement) {
+      id = /(\d{17,20})/.exec(node.id ?? "")?.[1] ?? null;
+    }
+    id ??= /(\d{17,20})/.exec(scope?.querySelector("[id*='xgwrapper']")?.id ?? "")?.[1] ?? null;
+    if (!id) return null;
+    const user = /\/@([\w.-]+)/.exec(scope?.querySelector("a[href*='/@']")?.getAttribute("href") ?? "")?.[1] ?? "";
+    return `https://www.tiktok.com/@${user}/video/${id}`;
+  }
+
   function permalink(video) {
-    const card = video.closest("article, shreddit-post, [data-testid='tweet']");
+    if (/(^|\.)tiktok\.com$/.test(location.hostname)) return tiktokLink(video);
+    const post = closestDeep(video, "shreddit-post");
+    if (post?.getAttribute("permalink")) return new URL(post.getAttribute("permalink"), location.origin).href;
+    const card = closestDeep(video, "article, shreddit-post, [data-testid='tweet']");
     const link = card?.querySelector("a[href*='/status/'], a[href*='/p/'], a[href*='/reel/'], a[href*='/comments/']");
     return link?.href ?? null;
   }
@@ -106,7 +155,7 @@
     e.stopPropagation();
     const video = current;
     if (!video) return;
-    label.textContent = "Gönderiliyor…";
+    label.textContent = msg("sending");
     chrome.runtime.sendMessage(
       {
         type: "video",
@@ -117,10 +166,10 @@
       },
       (r) => {
         label.textContent = chrome.runtime.lastError
-          ? "Eklenti yeniden yüklendi, sayfayı yenile"
+          ? msg("extensionReloaded")
           : r?.ok
-            ? "Pulse DM'e gönderildi ✓"
-            : r?.error || "Pulse DM'e ulaşılamadı";
+            ? msg("sent")
+            : r?.error || msg("unreachable");
         setTimeout(() => (label.textContent = IDLE), 2500);
       },
     );
