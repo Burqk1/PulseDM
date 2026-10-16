@@ -13,3 +13,9 @@ lto = true
 opt-level = 3
 panic = "abort"
 strip = true
+
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
