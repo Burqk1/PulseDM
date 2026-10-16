@@ -82,8 +82,59 @@ struct Fmt {
 }
 
 pub(crate) async fn extract(ytdlp: &Path, js_runtime: &str, url: &str, headers: &[(String, String)]) -> Result<Value> {
+    let v = match run_ytdlp(ytdlp, js_runtime, url, headers, false).await? {
+        // A carousel post (Instagram) fails as a whole when one of its slides is a photo, so keep the other slides.
+        Err(msg) if msg.contains("No video formats found") => run_ytdlp(ytdlp, js_runtime, url, headers, true).await?,
+        r => r,
+    };
+    let v = v.map_err(|msg| {
+        if msg.contains("Unsupported URL") {
+            return EngineError::InvalidUrl(text!(
+                "this page is not a single video. Open the video itself (its own link) and try again",
+                "bu sayfa tek bir video değil. Videonun kendi sayfasını açıp tekrar dene"
+            ));
+        }
+        EngineError::BadResponse(text!("could not read the video: {msg}", "video çözülemedi: {msg}"))
+    })?;
+    pick_entry(url, v)
+}
+
+/// A playlist result (a carousel post) is narrowed to the slide the URL points at (`img_index`), or else to its
+/// first slide with video.
+fn pick_entry(url: &str, mut v: Value) -> Result<Value> {
+    if let Some(Value::Array(entries)) = v.get_mut("entries").map(Value::take) {
+        let has_video = |e: &Value| formats(e).iter().any(|f| f.has_video);
+        let wanted = reqwest::Url::parse(url).ok().and_then(|u| {
+            u.query_pairs().find(|(k, _)| k == "img_index").and_then(|(_, i)| i.parse::<usize>().ok())
+        });
+        let index = wanted
+            .and_then(|i| i.checked_sub(1))
+            .filter(|&i| entries.get(i).is_some_and(has_video))
+            .or_else(|| entries.iter().position(has_video));
+        v = index.and_then(|i| entries.into_iter().nth(i)).unwrap_or(Value::Null);
+    }
+    if formats(&v).is_empty() {
+        return Err(EngineError::BadResponse(text!(
+            "there is no video at this link",
+            "bu bağlantıda indirilebilir video yok"
+        )));
+    }
+    Ok(v)
+}
+
+/// Runs `yt-dlp -J`; the inner error is yt-dlp's own message.
+async fn run_ytdlp(
+    ytdlp: &Path,
+    js_runtime: &str,
+    url: &str,
+    headers: &[(String, String)],
+    ignore_no_formats: bool,
+) -> Result<std::result::Result<Value, String>> {
     let mut cmd = hidden(ytdlp);
     cmd.args(["-J", "--no-playlist", "--no-warnings", "--js-runtimes", js_runtime]);
+    if ignore_no_formats {
+        cmd.arg("--ignore-no-formats-error");
+    }
     for (k, v) in headers {
         if k.eq_ignore_ascii_case("referer") || k.eq_ignore_ascii_case("user-agent") {
             cmd.args(["--add-header", &format!("{k}:{v}")]);
@@ -109,15 +160,9 @@ pub(crate) async fn extract(ytdlp: &Path, js_runtime: &str, url: &str, headers: 
             .unwrap_or(if crate::lang::english() { "unknown error" } else { "bilinmeyen hata" })
             .trim_start_matches("ERROR:")
             .trim();
-        if msg.contains("Unsupported URL") {
-            return Err(EngineError::InvalidUrl(text!(
-                "this page is not a single video. Open the video itself (its own link) and try again",
-                "bu sayfa tek bir video değil. Videonun kendi sayfasını açıp tekrar dene"
-            )));
-        }
-        return Err(EngineError::BadResponse(text!("could not read the video: {msg}", "video çözülemedi: {msg}")));
+        return Ok(Err(msg.to_string()));
     }
-    serde_json::from_slice(&out.stdout).map_err(|e| {
+    serde_json::from_slice(&out.stdout).map(Ok).map_err(|e| {
         EngineError::BadResponse(text!("could not read yt-dlp output: {e}", "yt-dlp çıktısı okunamadı: {e}"))
     })
 }
@@ -480,5 +525,37 @@ mod tests {
         assert_eq!(p[0].format_id, "http-720", "plain HTTP beats HLS at equal quality");
         assert_eq!(output_ext(&p, false), "mp4");
         assert!(!needs_ffmpeg(&p, false));
+    }
+
+    fn carousel() -> Value {
+        let slide = |id: &str| {
+            json!({"id": id, "title": "Post", "formats": [
+                {"format_id": "v", "protocol": "https", "url": id, "ext": "mp4", "height": 720, "tbr": 2000.0}
+            ]})
+        };
+        json!({"_type": "playlist", "id": "post", "entries": [
+            {"id": "photo", "title": "Post", "formats": []}, slide("second"), slide("third")
+        ]})
+    }
+
+    #[test]
+    fn carousel_takes_the_slide_in_img_index() {
+        let v = pick_entry("https://www.instagram.com/p/post/?img_index=3", carousel()).unwrap();
+        assert_eq!(v["id"], "third");
+    }
+
+    #[test]
+    fn carousel_skips_photos_without_an_index() {
+        let v = pick_entry("https://www.instagram.com/p/post/c/18116139967985439/", carousel()).unwrap();
+        assert_eq!(v["id"], "second");
+        let v = pick_entry("https://www.instagram.com/p/post/?img_index=1", carousel()).unwrap();
+        assert_eq!(v["id"], "second", "the indexed slide is a photo");
+    }
+
+    #[test]
+    fn link_without_video_is_an_error() {
+        let photos = json!({"_type": "playlist", "entries": [{"id": "a", "formats": []}]});
+        assert!(pick_entry("https://www.instagram.com/p/post/", photos).is_err());
+        assert!(pick_entry("https://www.instagram.com/p/post/", json!({"id": "a", "formats": []})).is_err());
     }
 }
