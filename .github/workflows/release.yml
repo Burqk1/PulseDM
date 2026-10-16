@@ -59,7 +59,13 @@ jobs:
         run: |
           node scripts/build-firefox.mjs
           npx web-ext lint -s target/firefox-extension --warnings-as-errors=false
+          export WEB_EXT_API_KEY="$(printf '%s' "$WEB_EXT_API_KEY" | tr -d '[:space:]')"
+          export WEB_EXT_API_SECRET="$(printf '%s' "$WEB_EXT_API_SECRET" | tr -d '[:space:]')"
           if [ -n "$WEB_EXT_API_KEY" ]; then
+            if ! [[ "$WEB_EXT_API_KEY" =~ ^user:[0-9]+:[0-9]+$ ]]; then
+              echo "::error::AMO_JWT_ISSUER must look like user:12345678:123 (got ${#WEB_EXT_API_KEY} chars); check that issuer and secret are not swapped"
+              exit 1
+            fi
             npx web-ext sign -s target/firefox-extension -a target/xpi --channel unlisted --approval-timeout 900000
           else
             echo "::warning::AMO_JWT_ISSUER/AMO_JWT_SECRET not set; the Firefox extension is not signed"
