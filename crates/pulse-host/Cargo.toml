@@ -1,6 +1,6 @@
 [package]
 name = "pulse-host"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2024"
 description = "Native messaging host that hands browser downloads to Pulse DM"
 license = "MIT"
