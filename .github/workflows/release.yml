@@ -66,7 +66,10 @@ jobs:
               echo "::error::AMO_JWT_ISSUER must look like user:12345678:123 (got ${#WEB_EXT_API_KEY} chars); check that issuer and secret are not swapped"
               exit 1
             fi
-            npx web-ext sign -s target/firefox-extension -a target/xpi --channel unlisted --approval-timeout 900000
+            if ! npx web-ext sign -s target/firefox-extension -a target/xpi --channel unlisted --approval-timeout 900000 2>&1 | tee target/sign.log; then
+              grep -q "already exists" target/sign.log || exit 1
+              node scripts/amo-download-signed.mjs
+            fi
           else
             echo "::warning::AMO_JWT_ISSUER/AMO_JWT_SECRET not set; the Firefox extension is not signed"
             npx web-ext build -s target/firefox-extension -a target/xpi --overwrite-dest
