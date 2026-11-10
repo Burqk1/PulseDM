@@ -228,11 +228,8 @@ fn parse_format(f: &Value) -> Option<Fmt> {
         Some(_) => true,
         None => height.is_some() || acodec.is_none(),
     };
-    let has_audio = match acodec {
-        Some("none") => false,
-        Some(_) => true,
-        None => has_video || vcodec.is_none(),
-    };
+    // An unknown audio codec still means audio, e.g. X/Twitter's audio-only HLS renditions.
+    let has_audio = acodec != Some("none");
     let headers = f
         .get("http_headers")
         .and_then(Value::as_object)
@@ -344,7 +341,11 @@ fn select_from(fmts: &[Fmt], option: &str) -> Result<Vec<Pick>> {
         .filter(|f| f.has_video && f.height.unwrap_or(0) <= max_h)
         .max_by_key(|f| {
             let h = f.height.unwrap_or(0);
-            let compatible = (h <= 1080 && f.vcodec.as_deref().is_some_and(|c| c.starts_with("avc"))) as u8;
+            let h264 = match f.vcodec.as_deref() {
+                Some(c) => c.starts_with("avc"),
+                None => f.ext == "mp4",
+            };
+            let compatible = (h <= 1080 && h264) as u8;
             let http = (f.protocol == Protocol::Http) as u8;
             (h, compatible, f.has_audio as u8, http, (f.tbr * 1000.0) as u64)
         })
@@ -525,6 +526,34 @@ mod tests {
         assert_eq!(p[0].format_id, "http-720", "plain HTTP beats HLS at equal quality");
         assert_eq!(output_ext(&p, false), "mp4");
         assert!(!needs_ffmpeg(&p, false));
+    }
+
+    fn twitter_like() -> Value {
+        json!({"title": "t", "extractor_key": "Twitter", "formats": [
+            {"format_id": "hls-audio-64000-Audio", "protocol": "m3u8_native", "url": "a64", "ext": "mp4", "vcodec": "none", "tbr": 64.0},
+            {"format_id": "hls-audio-128000-Audio", "protocol": "m3u8_native", "url": "a128", "ext": "mp4", "vcodec": "none", "tbr": 128.0},
+            {"format_id": "http-832", "protocol": "https", "url": "m360", "ext": "mp4", "height": 360, "tbr": 832.0},
+            {"format_id": "hls-1460", "protocol": "m3u8_native", "url": "h1080", "ext": "mp4", "vcodec": "avc1.640032", "acodec": "none", "height": 1080, "tbr": 1460.9},
+            {"format_id": "http-10368", "protocol": "https", "url": "m1080", "ext": "mp4", "height": 1080, "tbr": 10368.0}
+        ]})
+    }
+
+    #[test]
+    fn twitter_keeps_the_sound() {
+        let p = select(&twitter_like(), "best").unwrap();
+        assert_eq!(p.len(), 1);
+        assert_eq!(p[0].format_id, "http-10368", "the progressive MP4 carries audio");
+        let p = select(&twitter_like(), "audio").unwrap();
+        assert_eq!(p[0].format_id, "hls-audio-128000-Audio");
+    }
+
+    #[test]
+    fn video_only_stream_gets_audio_with_unknown_codec() {
+        let mut v = twitter_like();
+        v["formats"].as_array_mut().unwrap().retain(|f| f["protocol"] == "m3u8_native");
+        let p = select(&v, "best").unwrap();
+        let ids: Vec<&str> = p.iter().map(|p| p.format_id.as_str()).collect();
+        assert_eq!(ids, ["hls-1460", "hls-audio-128000-Audio"]);
     }
 
     fn carousel() -> Value {
