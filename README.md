@@ -137,7 +137,7 @@ flowchart LR
     BT == "peers: DHT, trackers" ==> NET
 ```
 
-- **`pulse-engine`** is a standalone Rust library with no UI: it handles segments, work stealing, the connection ramp, resume state, HLS, video sites, torrents and queues. It is tested on its own against a local test server: 49 tests cover byte-exact downloads, pause/resume, restarts, connection-limited servers, expired links, HLS decryption, queues, authentication, speed limits and torrent sources.
+- **`pulse-engine`** is a standalone Rust library with no UI: it handles segments, work stealing, the connection ramp, resume state, HLS, video sites, torrents and queues. It is tested on its own: 19 integration tests against a local test server cover byte-exact downloads, pause/resume, restarts, connection-limited servers, expired links, HLS decryption, queues, authentication, speed limits and torrent sources, and 34 unit tests cover segments, HLS parsing, media format selection, probing, scheduling, file naming and torrent sources.
 - **The app** (`src-tauri`) adds the tray, windows, notifications, autostart and the browser bridge. When its windows are closed, only the engine stays in memory.
 - **The extension** talks to the app through the browser's native messaging (no local web server, so websites cannot reach Pulse DM). The Chromium and Firefox versions are built from the same source.
 
@@ -247,7 +247,7 @@ npm run release -- 0.3.0   # bumps all version numbers, commits, tags v0.3.0
 git push --follow-tags     # GitHub builds the installer and publishes the release
 ```
 
-The workflow runs the tests, builds the NSIS installer, signs the update bundle, uploads `latest.json`, and builds (and, with the AMO keys, signs) `pulse-dm-firefox.xpi`. Running copies see the new version within 12 hours, or straight away from *Help → Check for updates*.
+The workflow checks that the tag matches the version in `tauri.conf.json`, builds the NSIS installer, signs the update bundle, uploads `latest.json`, and builds (and, with the AMO keys, signs) `pulse-dm-firefox.xpi`. It does not run the test suite. Running copies see the new version within 12 hours, or straight away from *Help → Check for updates*.
 
 ## Project structure
 
